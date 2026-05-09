@@ -1,0 +1,366 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  username    String   @unique
+  email       String   @unique
+  password    String
+  fullName    String
+  phone       String?
+  role        String   @default("SELLER")
+  isActive    Boolean  @default(true)
+  avatar      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastLoginAt DateTime?
+
+  cashRegistersOpened  CashRegister[] @relation("OpenedBy")
+  cashRegistersClosed  CashRegister[] @relation("ClosedBy")
+  sales                Sale[]
+  repairsAssigned      Repair[]       @relation("AssignedTechnician")
+  activities           ActivityLog[]
+  notifications        Notification[]
+
+  @@map("users")
+}
+
+model ShopSettings {
+  id            String   @id @default(uuid())
+  shopName      String   @default("RepairPro")
+  shopAddress   String?
+  shopPhone     String?
+  shopEmail     String?
+  shopLogo      String?
+  currency      String   @default("USD")
+  currencySymbol String  @default("$")
+  taxRate       Float    @default(0)
+  language      String   @default("en")
+  timezone      String   @default("UTC")
+  receiptFooter String?
+  thermalPrinterWidth Int @default(80)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("shop_settings")
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  color       String    @default("#3b82f6")
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products    Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  barcode         String?  @unique
+  sku             String?  @unique
+  costPrice       Float    @default(0)
+  salePrice       Float    @default(0)
+  salePrice2      Float    @default(0)
+  salePrice3      Float    @default(0)
+  quantity        Int      @default(0)
+  minStockAlert   Int      @default(5)
+  location        String?
+  image           String?
+  isActive        Boolean  @default(true)
+  isService       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  categoryId      String?
+  category        Category?    @relation(fields: [categoryId], references: [id])
+  supplierId      String?
+  supplier        Supplier?    @relation(fields: [supplierId], references: [id])
+  
+  saleItems       SaleItem[]
+  repairParts     RepairPart[]
+  inventoryLogs   InventoryLog[]
+  purchaseItems   PurchaseItem[]
+
+  @@map("products")
+}
+
+model Client {
+  id          String   @id @default(uuid())
+  fullName    String
+  phone       String
+  email       String?
+  address     String?
+  notes       String?
+  balance     Float    @default(0)
+  loyaltyPoints Int    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sales       Sale[]
+  repairs     Repair[]
+
+  @@map("clients")
+}
+
+model Supplier {
+  id          String   @id @default(uuid())
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  balance     Float    @default(0)
+  notes       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products    Product[]
+  purchases   Purchase[]
+
+  @@map("suppliers")
+}
+
+model Repair {
+  id                  String   @id @default(uuid())
+  ticketNumber        String   @unique
+  deviceName          String
+  deviceBrand         String
+  deviceModel         String
+  deviceIMEI          String?
+  deviceSerial        String?
+  devicePassword      String?
+  problemDescription  String
+  repairCost          Float    @default(0)
+  prepayment          Float    @default(0)
+  dueAmount           Float    @default(0)
+  status              String   @default("PENDING")
+  priority            String   @default("NORMAL")
+  accessoriesReceived String?
+  technicianNotes     String?
+  expectedDeliveryDate DateTime?
+  receivedAt          DateTime @default(now())
+  diagnosedAt         DateTime?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  deliveredAt         DateTime?
+  cancelledAt         DateTime?
+  cancellationReason  String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  clientId            String
+  client              Client       @relation(fields: [clientId], references: [id])
+  
+  technicianId        String?
+  technician          User?          @relation("AssignedTechnician", fields: [technicianId], references: [id])
+  
+  parts               RepairPart[]
+
+  @@map("repairs")
+}
+
+model RepairPart {
+  id        String   @id @default(uuid())
+  quantity  Int
+  unitPrice Float
+  total     Float
+
+  repairId  String
+  repair    Repair   @relation(fields: [repairId], references: [id], onDelete: Cascade)
+  
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@map("repair_parts")
+}
+
+model CashRegister {
+  id            String        @id @default(uuid())
+  openingAmount Float
+  closingAmount Float?
+  currentBalance Float
+  totalSales    Float         @default(0)
+  totalRefunds  Float         @default(0)
+  cashIn        Float         @default(0)
+  cashOut       Float         @default(0)
+  difference    Float?
+  notes         String?
+  status        String        @default("OPEN")
+  openedAt      DateTime      @default(now())
+  closedAt      DateTime?
+
+  openedById    String
+  openedBy      User          @relation("OpenedBy", fields: [openedById], references: [id])
+  
+  closedById    String?
+  closedBy      User?         @relation("ClosedBy", fields: [closedById], references: [id])
+  
+  cashMovements CashMovement[]
+  sales         Sale[]
+
+  @@map("cash_registers")
+}
+
+model CashMovement {
+  id          String          @id @default(uuid())
+  type        String
+  amount      Float
+  reason      String
+  createdAt   DateTime        @default(now())
+
+  cashRegisterId String
+  cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
+
+  @@map("cash_movements")
+}
+
+model Sale {
+  id            String        @id @default(uuid())
+  invoiceNumber String        @unique
+  subtotal      Float
+  discount      Float         @default(0)
+  discountType  String        @default("FIXED")
+  taxRate       Float         @default(0)
+  taxAmount     Float         @default(0)
+  total         Float
+  paidAmount    Float         @default(0)
+  dueAmount     Float         @default(0)
+  paymentMethod String        @default("CASH")
+  paymentStatus String        @default("PAID")
+  notes         String?
+  isRefunded    Boolean       @default(false)
+  refundedAmount Float        @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  clientId      String?
+  client        Client?       @relation(fields: [clientId], references: [id])
+  
+  sellerId      String
+  seller        User          @relation(fields: [sellerId], references: [id])
+  
+  cashRegisterId String
+  cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
+
+  items         SaleItem[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id        String  @id @default(uuid())
+  quantity  Int
+  unitPrice Float
+  discount  Float   @default(0)
+  total     Float
+
+  saleId    String
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@map("sale_items")
+}
+
+model Purchase {
+  id            String        @id @default(uuid())
+  invoiceNumber String
+  subtotal      Float
+  taxAmount     Float         @default(0)
+  total         Float
+  paidAmount    Float         @default(0)
+  dueAmount     Float         @default(0)
+  paymentStatus String        @default("PENDING")
+  status        String        @default("ORDERED")
+  notes         String?
+  orderedAt     DateTime      @default(now())
+  receivedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  supplierId    String
+  supplier      Supplier      @relation(fields: [supplierId], references: [id])
+
+  items         PurchaseItem[]
+
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id        String   @id @default(uuid())
+  quantity  Int
+  unitCost  Float
+  total     Float
+
+  purchaseId String
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+
+  @@map("purchase_items")
+}
+
+model InventoryLog {
+  id          String   @id @default(uuid())
+  type        String
+  quantity    Int
+  previousQty Int
+  newQty      Int
+  reason      String?
+  reference   String?
+  createdAt   DateTime @default(now())
+
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@map("inventory_logs")
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  action      String
+  module      String
+  description String?
+  entityId    String?
+  entityType  String?
+  oldValue    String?
+  newValue    String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@map("activity_logs")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  data      String?
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
