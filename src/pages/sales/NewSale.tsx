@@ -107,11 +107,13 @@ export default function NewSale() {
     }
   }
 
-  const filteredProducts = (products || []).filter(
-    (p) =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.sku?.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredProducts = Array.isArray(products)
+    ? products.filter(
+        (p) =>
+          p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          p.sku?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : []
 
   const handleAddProduct = (product: Product) => {
     setSelectedProduct(product)
