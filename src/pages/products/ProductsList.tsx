@@ -1,23 +1,44 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Plus, Search, Package } from 'lucide-react'
-
-const mockProducts = [
-  { id: '1', name: 'iPhone Screen', sku: 'SCR-001', price: 49.99, stock: 15, category: 'Screens' },
-  { id: '2', name: 'Samsung Battery', sku: 'BAT-002', price: 39.99, stock: 8, category: 'Batteries' },
-  { id: '3', name: 'Charging Port', sku: 'PRT-003', price: 19.99, stock: 25, category: 'Ports' },
-]
+import { Plus, Search, Package, Loader2 } from 'lucide-react'
+import { productService, Product } from '@/services/productService'
+import { useToast } from '@/hooks/use-toast'
 
 export default function ProductsList() {
   const navigate = useNavigate()
+  const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
+  const [products, setProducts] = useState<Product[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const filteredProducts = mockProducts.filter(product =>
+  useEffect(() => {
+    loadProducts()
+  }, [])
+
+  const loadProducts = async () => {
+    try {
+      setIsLoading(true)
+      const data = await productService.getProducts()
+      setProducts(data)
+    } catch (error) {
+      console.error('Error loading products:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to load products. Please try again.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    product.sku.toLowerCase().includes(searchQuery.toLowerCase())
+    (product.sku && product.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (product.barcode && product.barcode.toLowerCase().includes(searchQuery.toLowerCase()))
   )
 
   return (
@@ -49,31 +70,45 @@ export default function ProductsList() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {filteredProducts.map((product) => (
-              <div
-                key={product.id}
-                className="flex items-center justify-between rounded-lg border p-4 cursor-pointer hover:bg-accent"
-                onClick={() => navigate(`/products/${product.id}`)}
-              >
-                <div className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                    <Package className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{product.name}</p>
-                    <p className="text-sm text-muted-foreground">{product.sku} • {product.category}</p>
-                  </div>
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredProducts.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No products found
                 </div>
-                <div className="text-right">
-                  <p className="font-medium">${product.price.toFixed(2)}</p>
-                  <p className={`text-sm ${product.stock < 10 ? 'text-red-600' : 'text-muted-foreground'}`}>
-                    {product.stock} in stock
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
+              ) : (
+                filteredProducts.map((product) => (
+                  <div
+                    key={product.id}
+                    className="flex items-center justify-between rounded-lg border p-4 cursor-pointer hover:bg-accent"
+                    onClick={() => navigate(`/products/${product.id}`)}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                        <Package className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{product.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {product.sku || 'No SKU'} • {product.category?.name || 'No Category'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium">${product.price?.toFixed(2) || '0.00'}</p>
+                      <p className={`text-sm ${(product.quantity || 0) < 10 ? 'text-red-600' : 'text-muted-foreground'}`}>
+                        {product.quantity || 0} in stock
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

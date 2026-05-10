@@ -1,24 +1,44 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Plus, Search, Users } from 'lucide-react'
-
-const mockClients = [
-  { id: '1', name: 'John Doe', phone: '+1234567890', email: 'john@example.com', totalSpent: 450 },
-  { id: '2', name: 'Jane Smith', phone: '+1987654321', email: 'jane@example.com', totalSpent: 280 },
-  { id: '3', name: 'Mike Johnson', phone: '+1555123456', email: 'mike@example.com', totalSpent: 620 },
-]
+import { Plus, Search, Users, Loader2 } from 'lucide-react'
+import { clientService, Client } from '@/services/clientService'
+import { useToast } from '@/hooks/use-toast'
 
 export default function ClientsList() {
   const navigate = useNavigate()
+  const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
+  const [clients, setClients] = useState<Client[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const filteredClients = mockClients.filter(client =>
-    client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  useEffect(() => {
+    loadClients()
+  }, [])
+
+  const loadClients = async () => {
+    try {
+      setIsLoading(true)
+      const data = await clientService.getClients()
+      setClients(data)
+    } catch (error) {
+      console.error('Error loading clients:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to load clients. Please try again.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const filteredClients = clients.filter(client =>
+    client.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     client.phone.includes(searchQuery) ||
-    client.email.toLowerCase().includes(searchQuery.toLowerCase())
+    (client.email && client.email.toLowerCase().includes(searchQuery.toLowerCase()))
   )
 
   return (
@@ -50,29 +70,41 @@ export default function ClientsList() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {filteredClients.map((client) => (
-              <div
-                key={client.id}
-                className="flex items-center justify-between rounded-lg border p-4 cursor-pointer hover:bg-accent"
-                onClick={() => navigate(`/clients/${client.id}`)}
-              >
-                <div className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                    <Users className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{client.name}</p>
-                    <p className="text-sm text-muted-foreground">{client.phone}</p>
-                  </div>
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredClients.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No clients found
                 </div>
-                <div className="text-right">
-                  <p className="text-sm text-muted-foreground">{client.email}</p>
-                  <p className="text-sm font-medium">${client.totalSpent} total spent</p>
-                </div>
-              </div>
-            ))}
-          </div>
+              ) : (
+                filteredClients.map((client) => (
+                  <div
+                    key={client.id}
+                    className="flex items-center justify-between rounded-lg border p-4 cursor-pointer hover:bg-accent"
+                    onClick={() => navigate(`/clients/${client.id}`)}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                        <Users className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{client.fullName}</p>
+                        <p className="text-sm text-muted-foreground">{client.phone}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">{client.email || 'No email'}</p>
+                      <p className="text-sm font-medium">${client.balance?.toFixed(2) || '0.00'} balance</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
