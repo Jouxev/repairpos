@@ -1907,6 +1907,65 @@ electron.ipcMain.handle("db:query", async (_, { model, operation, args = {} }) =
     return { success: false, error: error.message };
   }
 });
+electron.ipcMain.handle("user:create", async (_, userData) => {
+  try {
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { username: userData.username },
+          { email: userData.email }
+        ]
+      }
+    });
+    if (existingUser) {
+      throw new Error("Username or email already exists");
+    }
+    const hashedPassword = await bcrypt.hash(userData.password, 10);
+    const user = await prisma.user.create({
+      data: {
+        username: userData.username,
+        email: userData.email,
+        password: hashedPassword,
+        fullName: userData.fullName,
+        phone: userData.phone,
+        role: userData.role,
+        isActive: userData.isActive ?? true,
+        avatar: userData.avatar
+      }
+    });
+    const { password, ...userWithoutPassword } = user;
+    return { success: true, user: userWithoutPassword };
+  } catch (error) {
+    console.error("Error creating user:", error);
+    return { success: false, error: error.message };
+  }
+});
+electron.ipcMain.handle("user:update", async (_, { id, data }) => {
+  try {
+    const updateData = { ...data };
+    if (data.password) {
+      updateData.password = await bcrypt.hash(data.password, 10);
+    }
+    const user = await prisma.user.update({
+      where: { id },
+      data: updateData
+    });
+    const { password, ...userWithoutPassword } = user;
+    return { success: true, user: userWithoutPassword };
+  } catch (error) {
+    console.error("Error updating user:", error);
+    return { success: false, error: error.message };
+  }
+});
+electron.ipcMain.handle("user:delete", async (_, id) => {
+  try {
+    await prisma.user.delete({ where: { id } });
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    return { success: false, error: error.message };
+  }
+});
 electron.ipcMain.handle("auth:hashPassword", async (_, password) => {
   return bcrypt.hash(password, 10);
 });

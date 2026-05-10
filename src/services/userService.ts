@@ -28,8 +28,22 @@ export interface UserFilters {
   isActive?: boolean
 }
 
-// IPC bridge to main process
-const ipcRenderer = window.require('electron').ipcRenderer
+// Access the electronAPI exposed by preload script
+declare global {
+  interface Window {
+    electronAPI: {
+      db: {
+        query: (params: { model: string; operation: string; args?: any }) => Promise<any>
+      }
+      auth: {
+        hashPassword: (password: string) => Promise<string>
+        comparePassword: (password: string, hash: string) => Promise<boolean>
+      }
+    }
+  }
+}
+
+const electronAPI = window.electronAPI
 
 class UserService {
   private static instance: UserService
@@ -45,25 +59,53 @@ class UserService {
 
   // Hash password - now done in main process
   async hashPassword(password: string): Promise<string> {
-    return ipcRenderer.invoke('auth:hashPassword', password)
+    return electronAPI.auth.hashPassword(password)
   }
 
   // Verify password - now done in main process
   async verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
-    return ipcRenderer.invoke('auth:comparePassword', password, hashedPassword)
+    return electronAPI.auth.comparePassword(password, hashedPassword)
   }
 
   // Create new user
   async createUser(data: CreateUserData) {
     try {
-      // Create user via IPC - the main process will hash the password
-      const result = await ipcRenderer.invoke('user:create', data)
+      // Check if username or email already exists
+      const existingUsers = await this.getUsers()
+      const existingUser = existingUsers.find(
+        u => u.username === data.username || u.email === data.email
+      )
+
+      if (existingUser) {
+        throw new Error('Username or email already exists')
+      }
+
+      // Hash password before sending
+      const hashedPassword = await this.hashPassword(data.password)
+
+      // Create user via IPC
+      const result = await electronAPI.db.query({
+        model: 'user',
+        operation: 'create',
+        args: {
+          data: {
+            username: data.username,
+            email: data.email,
+            password: hashedPassword,
+            fullName: data.fullName,
+            phone: data.phone,
+            role: data.role,
+            isActive: data.isActive ?? true,
+            avatar: data.avatar,
+          }
+        }
+      })
 
       if (!result.success) {
         throw new Error(result.error)
       }
 
-      return { success: true, user: result.user }
+      return { success: true, user: result.data }
     } catch (error) {
       console.error('Error creating user:', error)
       throw error
@@ -73,7 +115,7 @@ class UserService {
   // Get all users with optional filters
   async getUsers(filters: UserFilters = {}) {
     try {
-      const result = await ipcRenderer.invoke('db:query', {
+      const result = await electronAPI.db.query({
         model: 'user',
         operation: 'findMany',
         args: {
@@ -117,7 +159,7 @@ class UserService {
   // Get user by ID
   async getUserById(id: string) {
     try {
-      const result = await ipcRenderer.invoke('db:query', {
+      const result = await electronAPI.db.query({
         model: 'user',
         operation: 'findUnique',
         args: { where: { id } }
@@ -141,13 +183,27 @@ class UserService {
   // Update user
   async updateUser(id: string, data: UpdateUserData) {
     try {
-      const result = await ipcRenderer.invoke('user:update', { id, data })
+      const updateData: any = { ...data }
+      
+      // Handle password update separately - hash it
+      if (data.password) {
+        updateData.password = await this.hashPassword(data.password)
+      }
+
+      const result = await electronAPI.db.query({
+        model: 'user',
+        operation: 'update',
+        args: {
+          where: { id },
+          data: updateData
+        }
+      })
 
       if (!result.success) {
         throw new Error(result.error)
       }
 
-      return { success: true, user: result.user }
+      return { success: true, user: result.data }
     } catch (error) {
       console.error('Error updating user:', error)
       throw error
@@ -157,7 +213,11 @@ class UserService {
   // Delete user
   async deleteUser(id: string) {
     try {
-      const result = await ipcRenderer.invoke('user:delete', { id })
+      const result = await electronAPI.db.query({
+        model: 'user',
+        operation: 'delete',
+        args: { where: { id } }
+      })
 
       if (!result.success) {
         throw new Error(result.error)
@@ -174,7 +234,7 @@ class UserService {
   async toggleUserStatus(id: string) {
     try {
       const user = await this.getUserById(id)
-      const result = await ipcRenderer.invoke('db:query', {
+      const result = await electronAPI.db.query({
         model: 'user',
         operation: 'update',
         args: {
