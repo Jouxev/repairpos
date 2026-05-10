@@ -39,6 +39,17 @@ import Reports from '@/pages/reports/Reports'
 // Settings
 import Settings from '@/pages/settings/Settings'
 
+// Suppliers
+import SuppliersList from '@/pages/suppliers/SuppliersList'
+
+// Purchases
+import PurchasesList from '@/pages/purchases/PurchasesList'
+import NewPurchase from '@/pages/purchases/NewPurchase'
+
+// Sales
+import SalesList from '@/pages/sales/SalesList'
+import NewSale from '@/pages/sales/NewSale'
+
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
   const { user, isAuthenticated } = useAuthStore()
@@ -144,6 +155,37 @@ function App() {
           <Route path="/cash-register" element={
             <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'CASHIER']}>
               <CashRegister />
+            </ProtectedRoute>
+          } />
+
+          {/* Suppliers */}
+          <Route path="/suppliers" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'SELLER']}>
+              <SuppliersList />
+            </ProtectedRoute>
+          } />
+
+          {/* Purchases */}
+          <Route path="/purchases" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'SELLER']}>
+              <PurchasesList />
+            </ProtectedRoute>
+          } />
+          <Route path="/purchases/new" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
+              <NewPurchase />
+            </ProtectedRoute>
+          } />
+
+          {/* Sales */}
+          <Route path="/sales" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'SELLER']}>
+              <SalesList />
+            </ProtectedRoute>
+          } />
+          <Route path="/sales/new" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER', 'SELLER']}>
+              <NewSale />
             </ProtectedRoute>
           } />
 

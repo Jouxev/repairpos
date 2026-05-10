@@ -24,7 +24,10 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
-  Store
+  Store,
+  Truck,
+  Building2,
+  TrendingUp
 } from 'lucide-react'
 
 interface NavItem {
@@ -40,6 +43,9 @@ const navItems: NavItem[] = [
   { title: 'Repairs', href: '/repairs', icon: Wrench },
   { title: 'Products', href: '/products', icon: Package, roles: ['ADMIN', 'MANAGER', 'SELLER'] },
   { title: 'Clients', href: '/clients', icon: Users },
+  { title: 'Sales', href: '/sales', icon: TrendingUp, roles: ['ADMIN', 'MANAGER', 'SELLER'] },
+  { title: 'Purchases', href: '/purchases', icon: Truck, roles: ['ADMIN', 'MANAGER', 'SELLER'] },
+  { title: 'Suppliers', href: '/suppliers', icon: Building2, roles: ['ADMIN', 'MANAGER', 'SELLER'] },
   { title: 'Cash Register', href: '/cash-register', icon: DollarSign, roles: ['ADMIN', 'MANAGER', 'CASHIER'] },
   { title: 'Reports', href: '/reports', icon: BarChart3, roles: ['ADMIN', 'MANAGER'] },
   { title: 'Settings', href: '/settings', icon: Settings, roles: ['ADMIN'] },

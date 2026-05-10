@@ -9,7 +9,6 @@ import {
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
   Select,
@@ -35,7 +34,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import {
   DropdownMenu,
@@ -58,141 +56,136 @@ import {
   RefreshCw,
   Download,
   Eye,
+  CreditCard,
+  User,
+  ArrowRight,
   Check,
   X,
-  Truck,
-  CreditCard,
-  Building2,
-  ArrowRight,
   Clock,
+  TrendingUp,
+  Ban,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { purchaseService, Purchase, PurchaseStatus, PaymentStatus } from '@/services/purchaseService'
-import { supplierService, Supplier } from '@/services/supplierService'
-import PurchaseReceiveDialog from './PurchaseReceiveDialog'
+import { salesService, Sale, SaleStatus, PaymentStatus } from '@/services/salesService'
 
-const statusColors: Record<PurchaseStatus, string> = {
-  ORDERED: 'bg-blue-500',
-  PARTIAL: 'bg-yellow-500',
-  RECEIVED: 'bg-green-500',
+const statusColors: Record<SaleStatus, string> = {
+  QUOTATION: 'bg-gray-500',
+  CONFIRMED: 'bg-blue-500',
+  PROCESSING: 'bg-purple-500',
+  SHIPPED: 'bg-indigo-500',
+  DELIVERED: 'bg-green-500',
   CANCELLED: 'bg-red-500',
+  REFUNDED: 'bg-orange-500',
 }
 
 const paymentStatusColors: Record<PaymentStatus, string> = {
   PENDING: 'bg-yellow-500',
   PARTIAL: 'bg-orange-500',
   PAID: 'bg-green-500',
+  REFUNDED: 'bg-blue-500',
 }
 
-export default function PurchasesList() {
+export default function SalesList() {
   const navigate = useNavigate()
-  const [purchases, setPurchases] = useState<Purchase[]>([])
-  const [filteredPurchases, setFilteredPurchases] = useState<Purchase[]>([])
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [sales, setSales] = useState<Sale[]>([])
+  const [filteredSales, setFilteredSales] = useState<Sale[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string>('all')
-  const [selectedSupplier, setSelectedSupplier] = useState<string>('all')
   const [isLoading, setIsLoading] = useState(false)
 
   // Dialog states
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [isReceiveDialogOpen, setIsReceiveDialogOpen] = useState(false)
-  const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null)
+  const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
 
   useEffect(() => {
     loadData()
   }, [])
 
   useEffect(() => {
-    filterPurchases()
-  }, [purchases, searchQuery, selectedStatus, selectedPaymentStatus, selectedSupplier])
+    filterSales()
+  }, [sales, searchQuery, selectedStatus, selectedPaymentStatus])
 
   const loadData = async () => {
     try {
       setIsLoading(true)
-      const [purchasesData, suppliersData] = await Promise.all([
-        purchaseService.getPurchases(),
-        supplierService.getSuppliers(),
-      ])
-      setPurchases(purchasesData)
-      setSuppliers(suppliersData)
+      const salesData = await salesService.getSales()
+      setSales(salesData)
     } catch (error: any) {
-      toast.error('Failed to load data: ' + error.message)
+      toast.error('Failed to load sales: ' + error.message)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const filterPurchases = () => {
-    let filtered = purchases
+  const filterSales = () => {
+    let filtered = sales
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(
-        (p) =>
-          p.invoiceNumber?.toLowerCase().includes(query) ||
-          p.supplier?.name?.toLowerCase().includes(query)
+        (s) =>
+          s.invoiceNumber?.toLowerCase().includes(query) ||
+          s.customerName?.toLowerCase().includes(query) ||
+          s.customerPhone?.includes(query)
       )
     }
 
     if (selectedStatus !== 'all') {
-      filtered = filtered.filter((p) => p.status === selectedStatus)
+      filtered = filtered.filter((s) => s.status === selectedStatus)
     }
 
     if (selectedPaymentStatus !== 'all') {
-      filtered = filtered.filter((p) => p.paymentStatus === selectedPaymentStatus)
+      filtered = filtered.filter((s) => s.paymentStatus === selectedPaymentStatus)
     }
 
-    if (selectedSupplier !== 'all') {
-      filtered = filtered.filter((p) => p.supplierId === selectedSupplier)
-    }
-
-    setFilteredPurchases(filtered)
+    setFilteredSales(filtered)
   }
 
   const handleDelete = async () => {
-    if (!selectedPurchase) return
+    if (!selectedSale) return
 
     try {
       setIsLoading(true)
-      await purchaseService.deletePurchase(selectedPurchase.id)
-      toast.success('Purchase deleted successfully')
+      await salesService.deleteSale(selectedSale.id)
+      toast.success('Sale deleted successfully')
       setIsDeleteDialogOpen(false)
-      setSelectedPurchase(null)
+      setSelectedSale(null)
       await loadData()
     } catch (error: any) {
-      toast.error('Failed to delete purchase: ' + error.message)
+      toast.error('Failed to delete sale: ' + error.message)
     } finally {
       setIsLoading(false)
     }
   }
 
   // Helper functions for dialog actions
-  const openViewDialog = (purchase: Purchase) => {
-    setSelectedPurchase(purchase)
+  const openViewDialog = (sale: Sale) => {
+    setSelectedSale(sale)
     setIsViewDialogOpen(true)
   }
 
-  const openEditDialog = (purchase: Purchase) => {
-    navigate(`/purchases/edit/${purchase.id}`)
+  const openEditDialog = (sale: Sale) => {
+    navigate(`/sales/edit/${sale.id}`)
   }
 
-  const openDeleteDialog = (purchase: Purchase) => {
-    setSelectedPurchase(purchase)
+  const openDeleteDialog = (sale: Sale) => {
+    setSelectedSale(sale)
     setIsDeleteDialogOpen(true)
   }
 
-  const openReceiveDialog = (purchase: Purchase) => {
-    setSelectedPurchase(purchase)
-    setIsReceiveDialogOpen(true)
-  }
-
-  const handleAddPayment = (purchase: Purchase) => {
-    setSelectedPurchase(purchase)
-    // Payment dialog could be opened here
-    toast.info('Payment feature - to be implemented')
+  const handleStatusChange = async (sale: Sale, newStatus: SaleStatus) => {
+    try {
+      setIsLoading(true)
+      await salesService.updateStatus(sale.id, newStatus)
+      toast.success(`Sale status updated to ${newStatus}`)
+      await loadData()
+    } catch (error: any) {
+      toast.error('Failed to update status: ' + error.message)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const formatCurrency = (amount: number) => {
@@ -210,12 +203,15 @@ export default function PurchasesList() {
     })
   }
 
-  const getStatusBadge = (status: PurchaseStatus) => {
-    const colors: Record<PurchaseStatus, string> = {
-      ORDERED: 'bg-blue-100 text-blue-800 border-blue-200',
-      PARTIAL: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      RECEIVED: 'bg-green-100 text-green-800 border-green-200',
+  const getStatusBadge = (status: SaleStatus) => {
+    const colors: Record<SaleStatus, string> = {
+      QUOTATION: 'bg-gray-100 text-gray-800 border-gray-200',
+      CONFIRMED: 'bg-blue-100 text-blue-800 border-blue-200',
+      PROCESSING: 'bg-purple-100 text-purple-800 border-purple-200',
+      SHIPPED: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      DELIVERED: 'bg-green-100 text-green-800 border-green-200',
       CANCELLED: 'bg-red-100 text-red-800 border-red-200',
+      REFUNDED: 'bg-orange-100 text-orange-800 border-orange-200',
     }
 
     return (
@@ -230,6 +226,7 @@ export default function PurchasesList() {
       PENDING: 'bg-yellow-100 text-yellow-800 border-yellow-200',
       PARTIAL: 'bg-orange-100 text-orange-800 border-orange-200',
       PAID: 'bg-green-100 text-green-800 border-green-200',
+      REFUNDED: 'bg-blue-100 text-blue-800 border-blue-200',
     }
 
     return (
@@ -244,14 +241,14 @@ export default function PurchasesList() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Purchases</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Sales</h1>
           <p className="text-muted-foreground">
-            Manage purchase orders and stock receiving
+            Manage sales orders and quotations
           </p>
         </div>
-        <Button onClick={() => navigate('/purchases/new')}>
+        <Button onClick={() => navigate('/sales/new')}>
           <Plus className="h-4 w-4 mr-2" />
-          New Purchase
+          New Sale
         </Button>
       </div>
 
@@ -262,7 +259,7 @@ export default function PurchasesList() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by invoice or supplier..."
+                placeholder="Search by invoice, customer name or phone..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -274,9 +271,11 @@ export default function PurchasesList() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="ORDERED">Ordered</SelectItem>
-                <SelectItem value="PARTIAL">Partial</SelectItem>
-                <SelectItem value="RECEIVED">Received</SelectItem>
+                <SelectItem value="QUOTATION">Quotation</SelectItem>
+                <SelectItem value="CONFIRMED">Confirmed</SelectItem>
+                <SelectItem value="PROCESSING">Processing</SelectItem>
+                <SelectItem value="SHIPPED">Shipped</SelectItem>
+                <SelectItem value="DELIVERED">Delivered</SelectItem>
                 <SelectItem value="CANCELLED">Cancelled</SelectItem>
               </SelectContent>
             </Select>
@@ -291,31 +290,18 @@ export default function PurchasesList() {
                 <SelectItem value="PAID">Paid</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Supplier" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Suppliers</SelectItem>
-                {suppliers.map((supplier) => (
-                  <SelectItem key={supplier.id} value={supplier.id}>
-                    {supplier.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </CardContent>
       </Card>
 
-      {/* Purchases Table */}
+      {/* Sales Table */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Purchase Orders ({filteredPurchases.length})</CardTitle>
+              <CardTitle>Sales Orders ({filteredSales.length})</CardTitle>
               <CardDescription>
-                Manage purchase orders and stock receiving
+                Manage sales orders and quotations
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -336,7 +322,7 @@ export default function PurchasesList() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Invoice</TableHead>
-                  <TableHead>Supplier</TableHead>
+                  <TableHead>Customer</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Payment</TableHead>
                   <TableHead className="text-right">Total</TableHead>
@@ -346,43 +332,43 @@ export default function PurchasesList() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredPurchases.length === 0 ? (
+                {filteredSales.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center py-8">
                       <div className="flex flex-col items-center gap-2 text-muted-foreground">
                         <ShoppingCart className="h-8 w-8" />
-                        <p>No purchases found</p>
+                        <p>No sales found</p>
                       </div>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredPurchases.map((purchase) => (
-                    <TableRow key={purchase.id}>
+                  filteredSales.map((sale) => (
+                    <TableRow key={sale.id}>
                       <TableCell>
-                        <div className="font-medium">{purchase.invoiceNumber}</div>
+                        <div className="font-medium">{sale.invoiceNumber}</div>
                         <div className="text-xs text-muted-foreground">
-                          {purchase.items?.length || 0} items
+                          {sale.items?.length || 0} items
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium">{purchase.supplier?.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {purchase.supplier?.phone}
-                        </div>
+                        <div className="font-medium">{sale.customerName || 'Walk-in Customer'}</div>
+                        {sale.customerPhone && (
+                          <div className="text-xs text-muted-foreground">{sale.customerPhone}</div>
+                        )}
                       </TableCell>
-                      <TableCell>{getStatusBadge(purchase.status)}</TableCell>
-                      <TableCell>{getPaymentStatusBadge(purchase.paymentStatus)}</TableCell>
+                      <TableCell>{getStatusBadge(sale.status)}</TableCell>
+                      <TableCell>{getPaymentStatusBadge(sale.paymentStatus)}</TableCell>
                       <TableCell className="text-right font-medium">
-                        {formatCurrency(purchase.total)}
+                        {formatCurrency(sale.total)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <span className={purchase.dueAmount > 0 ? 'text-destructive' : 'text-green-600'}>
-                          {formatCurrency(purchase.dueAmount)}
+                        <span className={sale.dueAmount > 0 ? 'text-destructive' : 'text-green-600'}>
+                          {formatCurrency(sale.dueAmount)}
                         </span>
                       </TableCell>
                       <TableCell>
                         <span className="text-sm text-muted-foreground">
-                          {formatDate(purchase.orderedAt)}
+                          {formatDate(sale.saleDate)}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -395,23 +381,54 @@ export default function PurchasesList() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => openViewDialog(purchase)}>
+                            <DropdownMenuItem onClick={() => openViewDialog(sale)}>
                               <Eye className="h-4 w-4 mr-2" />
                               View Details
                             </DropdownMenuItem>
-                            {purchase.status !== 'RECEIVED' && purchase.status !== 'CANCELLED' && (
-                              <DropdownMenuItem onClick={() => openReceiveDialog(purchase)}>
-                                <Truck className="h-4 w-4 mr-2" />
-                                Receive Stock
+                            {sale.status !== 'DELIVERED' && sale.status !== 'CANCELLED' && (
+                              <DropdownMenuItem onClick={() => navigate(`/sales/edit/${sale.id}`)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem onClick={() => navigate(`/purchases/edit/${purchase.id}`)}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuLabel>Update Status</DropdownMenuLabel>
+                            {sale.status === 'QUOTATION' && (
+                              <DropdownMenuItem onClick={() => handleStatusChange(sale, 'CONFIRMED')}>
+                                <Check className="h-4 w-4 mr-2" />
+                                Mark as Confirmed
+                              </DropdownMenuItem>
+                            )}
+                            {sale.status === 'CONFIRMED' && (
+                              <DropdownMenuItem onClick={() => handleStatusChange(sale, 'PROCESSING')}>
+                                <Package className="h-4 w-4 mr-2" />
+                                Mark as Processing
+                              </DropdownMenuItem>
+                            )}
+                            {sale.status === 'PROCESSING' && (
+                              <DropdownMenuItem onClick={() => handleStatusChange(sale, 'SHIPPED')}>
+                                <Truck className="h-4 w-4 mr-2" />
+                                Mark as Shipped
+                              </DropdownMenuItem>
+                            )}
+                            {sale.status === 'SHIPPED' && (
+                              <DropdownMenuItem onClick={() => handleStatusChange(sale, 'DELIVERED')}>
+                                <Check className="h-4 w-4 mr-2" />
+                                Mark as Delivered
+                              </DropdownMenuItem>
+                            )}
+                            {(sale.status !== 'CANCELLED' && sale.status !== 'DELIVERED') && (
+                              <DropdownMenuItem
+                                onClick={() => handleStatusChange(sale, 'CANCELLED')}
+                                className="text-destructive"
+                              >
+                                <Ban className="h-4 w-4 mr-2" />
+                                Cancel Order
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onClick={() => openDeleteDialog(purchase)}
+                              onClick={() => openDeleteDialog(sale)}
                               className="text-destructive"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
@@ -433,79 +450,64 @@ export default function PurchasesList() {
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Purchase Order Details</DialogTitle>
+            <DialogTitle>Sale Order Details</DialogTitle>
             <DialogDescription>
-              View complete purchase order information
+              View complete sale order information
             </DialogDescription>
           </DialogHeader>
-          {selectedPurchase && (
+          {selectedSale && (
             <div className="space-y-6 py-4">
               {/* Header */}
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="text-2xl font-bold">{selectedPurchase.invoiceNumber}</h3>
+                  <h3 className="text-2xl font-bold">{selectedSale.invoiceNumber}</h3>
                   <div className="flex items-center gap-2 mt-2">
-                    {getStatusBadge(selectedPurchase.status)}
-                    {getPaymentStatusBadge(selectedPurchase.paymentStatus)}
+                    {getStatusBadge(selectedSale.status)}
+                    {getPaymentStatusBadge(selectedSale.paymentStatus)}
                   </div>
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-muted-foreground">Order Date</p>
-                  <p className="font-medium">{formatDate(selectedPurchase.orderedAt)}</p>
-                  {selectedPurchase.expectedDeliveryDate && (
-                    <>
-                      <p className="text-sm text-muted-foreground mt-2">Expected Delivery</p>
-                      <p className="font-medium">{formatDate(selectedPurchase.expectedDeliveryDate)}</p>
-                    </>
-                  )}
+                  <p className="font-medium">{formatDate(selectedSale.saleDate)}</p>
                 </div>
               </div>
 
-              {/* Supplier Info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-muted rounded-lg">
-                  <h4 className="font-medium mb-2 flex items-center gap-2">
-                    <Building2 className="h-4 w-4" />
-                    Supplier
-                  </h4>
-                  <p className="font-medium">{selectedPurchase.supplier?.name}</p>
-                  {selectedPurchase.supplier?.phone && (
-                    <p className="text-sm text-muted-foreground">{selectedPurchase.supplier.phone}</p>
-                  )}
-                </div>
-                <div className="p-4 bg-muted rounded-lg">
-                  <h4 className="font-medium mb-2 flex items-center gap-2">
-                    <Package className="h-4 w-4" />
-                    Items
-                  </h4>
-                  <p className="font-medium">{selectedPurchase.items?.length || 0} products</p>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedPurchase.items?.reduce((sum: number, item: any) => sum + item.quantity, 0)} total units
-                  </p>
-                </div>
+              {/* Customer Info */}
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="font-medium mb-2 flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  Customer
+                </h4>
+                <p className="font-medium">{selectedSale.customerName || 'Walk-in Customer'}</p>
+                {selectedSale.customerPhone && (
+                  <p className="text-sm text-muted-foreground">{selectedSale.customerPhone}</p>
+                )}
+                {selectedSale.customerEmail && (
+                  <p className="text-sm text-muted-foreground">{selectedSale.customerEmail}</p>
+                )}
               </div>
 
               {/* Items Table */}
               <div>
-                <h4 className="font-medium mb-3">Purchase Items</h4>
+                <h4 className="font-medium mb-3">Sale Items</h4>
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Product</TableHead>
                       <TableHead className="text-right">Quantity</TableHead>
-                      <TableHead className="text-right">Unit Cost</TableHead>
+                      <TableHead className="text-right">Unit Price</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {selectedPurchase.items?.map((item: any) => (
+                    {selectedSale.items?.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>
                           <div className="font-medium">{item.product?.name}</div>
                           <div className="text-xs text-muted-foreground">{item.product?.sku}</div>
                         </TableCell>
                         <TableCell className="text-right">{item.quantity}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(item.unitCost)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(item.total)}</TableCell>
                       </TableRow>
                     ))}
@@ -518,35 +520,39 @@ export default function PurchasesList() {
                 <div className="w-72 space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Subtotal</span>
-                    <span>{formatCurrency(selectedPurchase.subtotal)}</span>
+                    <span>{formatCurrency(selectedSale.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Discount</span>
+                    <span>{formatCurrency(selectedSale.discountAmount)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Tax</span>
-                    <span>{formatCurrency(selectedPurchase.taxAmount)}</span>
+                    <span>{formatCurrency(selectedSale.taxAmount)}</span>
                   </div>
                   <Separator />
                   <div className="flex justify-between font-medium">
                     <span>Total</span>
-                    <span>{formatCurrency(selectedPurchase.total)}</span>
+                    <span>{formatCurrency(selectedSale.total)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Paid</span>
-                    <span className="text-green-600">{formatCurrency(selectedPurchase.paidAmount)}</span>
+                    <span className="text-green-600">{formatCurrency(selectedSale.paidAmount)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Due</span>
-                    <span className={selectedPurchase.dueAmount > 0 ? 'text-destructive' : 'text-green-600'}>
-                      {formatCurrency(selectedPurchase.dueAmount)}
+                    <span className={selectedSale.dueAmount > 0 ? 'text-destructive' : 'text-green-600'}>
+                      {formatCurrency(selectedSale.dueAmount)}
                     </span>
                   </div>
                 </div>
               </div>
 
               {/* Notes */}
-              {selectedPurchase.notes && (
+              {selectedSale.notes && (
                 <div className="p-4 bg-muted rounded-lg">
                   <h4 className="font-medium mb-2">Notes</h4>
-                  <p className="text-sm text-muted-foreground">{selectedPurchase.notes}</p>
+                  <p className="text-sm text-muted-foreground">{selectedSale.notes}</p>
                 </div>
               )}
 
@@ -558,12 +564,6 @@ export default function PurchasesList() {
                 >
                   Close
                 </Button>
-                {selectedPurchase.status !== 'RECEIVED' && selectedPurchase.status !== 'CANCELLED' && (
-                  <Button onClick={() => openReceiveDialog(selectedPurchase)}>
-                    <Truck className="h-4 w-4 mr-2" />
-                    Receive Stock
-                  </Button>
-                )}
               </div>
             </div>
           )}
@@ -574,16 +574,16 @@ export default function PurchasesList() {
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Purchase Order</DialogTitle>
+            <DialogTitle>Delete Sale Order</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this purchase order? This action cannot be undone.
+              Are you sure you want to delete this sale order? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          {selectedPurchase && (
+          {selectedSale && (
             <div className="py-4">
-              <p className="font-medium">{selectedPurchase.invoiceNumber}</p>
-              <p className="text-sm text-muted-foreground">{selectedPurchase.supplier?.name}</p>
-              <p className="text-lg font-medium mt-2">{formatCurrency(selectedPurchase.total)}</p>
+              <p className="font-medium">{selectedSale.invoiceNumber}</p>
+              <p className="text-sm text-muted-foreground">{selectedSale.customerName || 'Walk-in Customer'}</p>
+              <p className="text-lg font-medium mt-2">{formatCurrency(selectedSale.total)}</p>
             </div>
           )}
           <DialogFooter>
@@ -591,7 +591,7 @@ export default function PurchasesList() {
               variant="outline"
               onClick={() => {
                 setIsDeleteDialogOpen(false)
-                setSelectedPurchase(null)
+                setSelectedSale(null)
               }}
               disabled={isLoading}
             >
@@ -602,26 +602,11 @@ export default function PurchasesList() {
               onClick={handleDelete}
               disabled={isLoading}
             >
-              {isLoading ? 'Deleting...' : 'Delete Purchase'}
+              {isLoading ? 'Deleting...' : 'Delete Sale'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Receive Stock Dialog */}
-      <PurchaseReceiveDialog
-        isOpen={isReceiveDialogOpen}
-        onClose={() => {
-          setIsReceiveDialogOpen(false)
-          setSelectedPurchase(null)
-        }}
-        purchase={selectedPurchase}
-        onSuccess={() => {
-          loadData()
-          setIsReceiveDialogOpen(false)
-          setSelectedPurchase(null)
-        }}
-      />
     </div>
   )
 }
