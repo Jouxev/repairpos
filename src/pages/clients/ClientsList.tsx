@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast'
 
 export default function ClientsList() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [clients, setClients] = useState<Client[]>([])
@@ -16,7 +17,7 @@ export default function ClientsList() {
 
   useEffect(() => {
     loadClients()
-  }, [])
+  }, [location.key])
 
   const loadClients = async () => {
     try {
@@ -35,11 +36,13 @@ export default function ClientsList() {
     }
   }
 
-  const filteredClients = clients.filter(client =>
-    client.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.phone.includes(searchQuery) ||
-    (client.email && client.email.toLowerCase().includes(searchQuery.toLowerCase()))
-  )
+  const filteredClients = Array.isArray(clients)
+    ? clients.filter(client =>
+        client.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        client.phone.includes(searchQuery) ||
+        (client.email && client.email.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+    : []
 
   return (
     <div className="space-y-6">

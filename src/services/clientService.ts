@@ -5,6 +5,7 @@ export interface Client {
   email?: string
   address?: string
   notes?: string
+  isActive: boolean
   balance: number
   loyaltyPoints: number
   createdAt: Date
@@ -17,6 +18,7 @@ export interface CreateClientData {
   email?: string
   address?: string
   notes?: string
+  isActive?: boolean
 }
 
 export interface UpdateClientData {
@@ -25,6 +27,7 @@ export interface UpdateClientData {
   email?: string
   address?: string
   notes?: string
+  isActive?: boolean
 }
 
 export interface ClientFilters {
@@ -117,7 +120,11 @@ class ClientService {
         operation: 'create',
         args: {
           data: {
-            ...data,
+            fullName: data.fullName,
+            phone: data.phone,
+            email: data.email,
+            address: data.address,
+            notes: data.notes,
             balance: 0,
             loyaltyPoints: 0,
           },
@@ -133,12 +140,20 @@ class ClientService {
   // Update a client
   async updateClient(id: string, data: UpdateClientData): Promise<Client> {
     try {
+      // Build update data dynamically
+      const updateData: any = {}
+      if (data.fullName !== undefined) updateData.fullName = data.fullName
+      if (data.phone !== undefined) updateData.phone = data.phone
+      if (data.email !== undefined) updateData.email = data.email
+      if (data.address !== undefined) updateData.address = data.address
+      if (data.notes !== undefined) updateData.notes = data.notes
+
       const result = await electronAPI.db.query({
         model: 'client',
         operation: 'update',
         args: {
           where: { id },
-          data,
+          data: updateData,
         },
       })
       return result?.data
@@ -171,8 +186,18 @@ class ClientService {
       if (!client) {
         throw new Error('Client not found')
       }
+
       const newBalance = client.balance + amount
-      return this.updateClient(id, { balance: newBalance })
+
+      const result = await electronAPI.db.query({
+        model: 'client',
+        operation: 'update',
+        args: {
+          where: { id },
+          data: { balance: newBalance },
+        },
+      })
+      return result?.data
     } catch (error) {
       console.error('Error updating client balance:', error)
       throw new Error('Failed to update client balance')
@@ -186,22 +211,32 @@ class ClientService {
       if (!client) {
         throw new Error('Client not found')
       }
+
       const newPoints = client.loyaltyPoints + points
-      return this.updateClient(id, { loyaltyPoints: newPoints })
+
+      const result = await electronAPI.db.query({
+        model: 'client',
+        operation: 'update',
+        args: {
+          where: { id },
+          data: { loyaltyPoints: newPoints },
+        },
+      })
+      return result?.data
     } catch (error) {
       console.error('Error adding loyalty points:', error)
       throw new Error('Failed to add loyalty points')
     }
   }
 
-  // Build filters for queries
+  // Build Prisma where clause from filters
   private buildFilters(filters?: ClientFilters): any {
     const where: any = {}
 
     if (filters?.search) {
       where.OR = [
         { fullName: { contains: filters.search, mode: 'insensitive' } },
-        { phone: { contains: filters.search } },
+        { phone: { contains: filters.search, mode: 'insensitive' } },
         { email: { contains: filters.search, mode: 'insensitive' } },
       ]
     }

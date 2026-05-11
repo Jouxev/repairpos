@@ -25,10 +25,12 @@ import NewRepair from '@/pages/repairs/NewRepair'
 // Products
 import ProductsList from '@/pages/products/ProductsList'
 import ProductDetail from '@/pages/products/ProductDetail'
+import NewProduct from '@/pages/products/NewProduct'
 
 // Clients
 import ClientsList from '@/pages/clients/ClientsList'
 import ClientDetail from '@/pages/clients/ClientDetail'
+import NewClient from '@/pages/clients/NewClient'
 
 // Cash Register
 import CashRegister from '@/pages/cash-register/CashRegister'
@@ -133,6 +135,11 @@ function App() {
               <ProductsList />
             </ProtectedRoute>
           } />
+          <Route path="/products/new" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
+              <NewProduct />
+            </ProtectedRoute>
+          } />
           <Route path="/products/:id" element={
             <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
               <ProductDetail />
@@ -143,6 +150,11 @@ function App() {
           <Route path="/clients" element={
             <ProtectedRoute>
               <ClientsList />
+            </ProtectedRoute>
+          } />
+          <Route path="/clients/new" element={
+            <ProtectedRoute>
+              <NewClient />
             </ProtectedRoute>
           } />
           <Route path="/clients/:id" element={

@@ -31,6 +31,13 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Plus,
   Trash2,
   ArrowLeft,
@@ -40,11 +47,13 @@ import {
   DollarSign,
   Search,
   Check,
+  ExternalLink,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supplierService, Supplier } from '@/services/supplierService'
 import { productService, Product } from '@/services/productService'
 import { purchaseService, CreatePurchaseData, PurchaseItem } from '@/services/purchaseService'
+import NewProduct from '@/pages/products/NewProduct'
 
 interface FormItem {
   id: string
@@ -62,6 +71,7 @@ export default function NewPurchase() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [searchProductQuery, setSearchProductQuery] = useState('')
+  const [isProductDialogOpen, setIsProductDialogOpen] = useState(false)
 
   // Form data
   const [formData, setFormData] = useState({
@@ -129,32 +139,32 @@ export default function NewPurchase() {
       setItems([...items, newItem])
     }
 
-    toast.success(`${product.name} added to purchase`)
+    toast.success(`Added ${product.name} to purchase`)
   }
 
   const handleRemoveItem = (itemId: string) => {
     setItems(items.filter((item) => item.id !== itemId))
   }
 
-  const handleUpdateItemQuantity = (itemId: string, quantity: number) => {
-    if (quantity < 1) return
+  const handleUpdateQuantity = (itemId: string, newQuantity: number) => {
+    if (newQuantity < 1) return
 
     setItems(
       items.map((item) =>
         item.id === itemId
-          ? { ...item, quantity, total: quantity * item.unitCost }
+          ? { ...item, quantity: newQuantity, total: newQuantity * item.unitCost }
           : item
       )
     )
   }
 
-  const handleUpdateItemCost = (itemId: string, unitCost: number) => {
-    if (unitCost < 0) return
+  const handleUpdateUnitCost = (itemId: string, newUnitCost: number) => {
+    if (newUnitCost < 0) return
 
     setItems(
       items.map((item) =>
         item.id === itemId
-          ? { ...item, unitCost, total: item.quantity * unitCost }
+          ? { ...item, unitCost: newUnitCost, total: item.quantity * newUnitCost }
           : item
       )
     )
@@ -168,11 +178,6 @@ export default function NewPurchase() {
       return
     }
 
-    if (!formData.invoiceNumber.trim()) {
-      toast.error('Please enter an invoice number')
-      return
-    }
-
     if (items.length === 0) {
       toast.error('Please add at least one item')
       return
@@ -182,8 +187,8 @@ export default function NewPurchase() {
       setIsLoading(true)
 
       const purchaseData: CreatePurchaseData = {
-        supplierId: formData.supplierId,
         invoiceNumber: formData.invoiceNumber,
+        supplierId: formData.supplierId,
         items: items.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
@@ -193,11 +198,13 @@ export default function NewPurchase() {
         subtotal,
         taxAmount,
         total,
+        paidAmount: 0,
+        dueAmount: total,
+        notes: formData.notes,
         orderedAt: new Date(formData.orderedAt),
         expectedDeliveryDate: formData.expectedDeliveryDate
           ? new Date(formData.expectedDeliveryDate)
           : undefined,
-        notes: formData.notes,
       }
 
       await purchaseService.createPurchase(purchaseData)
@@ -218,6 +225,13 @@ export default function NewPurchase() {
       )
     : []
 
+  // Handle product created from dialog
+  const handleProductCreated = (product: Product) => {
+    setProducts((prev) => [...prev, product])
+    handleAddItem(product)
+    setIsProductDialogOpen(false)
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -230,279 +244,287 @@ export default function NewPurchase() {
         </div>
         <Button variant="outline" onClick={() => navigate('/purchases')}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Purchases
+          Back
         </Button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Basic Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              Purchase Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="supplier">Supplier *</Label>
-                <Select
-                  value={formData.supplierId}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, supplierId: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a supplier" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {suppliers.map((supplier) => (
-                      <SelectItem key={supplier.id} value={supplier.id}>
-                        {supplier.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="invoiceNumber">Invoice Number *</Label>
-                <Input
-                  id="invoiceNumber"
-                  value={formData.invoiceNumber}
-                  onChange={(e) =>
-                    setFormData({ ...formData, invoiceNumber: e.target.value })
-                  }
-                  placeholder="Enter invoice number"
-                  required
-                />
-              </div>
-            </div>
+      <form onSubmit={handleSubmit}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column - Order Details */}
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5" />
+                  Order Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="supplier">Supplier *</Label>
+                  <Select
+                    value={formData.supplierId}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({ ...prev, supplierId: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select supplier" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {suppliers.map((supplier) => (
+                        <SelectItem key={supplier.id} value={supplier.id}>
+                          {supplier.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="orderedAt">Order Date</Label>
-                <Input
-                  id="orderedAt"
-                  type="date"
-                  value={formData.orderedAt}
-                  onChange={(e) =>
-                    setFormData({ ...formData, orderedAt: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="expectedDeliveryDate">Expected Delivery</Label>
-                <Input
-                  id="expectedDeliveryDate"
-                  type="date"
-                  value={formData.expectedDeliveryDate}
-                  onChange={(e) =>
-                    setFormData({ ...formData, expectedDeliveryDate: e.target.value })
-                  }
-                />
-              </div>
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="invoiceNumber">Invoice Number</Label>
+                  <Input
+                    id="invoiceNumber"
+                    value={formData.invoiceNumber}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, invoiceNumber: e.target.value }))
+                    }
+                    placeholder="Enter invoice number"
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) =>
-                  setFormData({ ...formData, notes: e.target.value })
-                }
-                placeholder="Additional notes about this purchase order"
-                rows={2}
-              />
-            </div>
-          </CardContent>
-        </Card>
+                <div className="space-y-2">
+                  <Label htmlFor="orderedAt">Order Date</Label>
+                  <Input
+                    id="orderedAt"
+                    type="date"
+                    value={formData.orderedAt}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, orderedAt: e.target.value }))
+                    }
+                  />
+                </div>
 
-        {/* Items */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5" />
-              Purchase Items
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Add Item */}
-            <div className="p-4 border rounded-lg bg-muted/50">
-              <h4 className="font-medium mb-3">Add Product</h4>
-              <div className="relative mb-3">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search products by name or SKU..."
-                  value={searchProductQuery}
-                  onChange={(e) => setSearchProductQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              
-              {searchProductQuery && (
-                <ScrollArea className="h-48 border rounded-md">
-                  <div className="p-2 space-y-1">
-                    {filteredProducts.length === 0 ? (
-                      <p className="text-sm text-muted-foreground p-2">No products found</p>
-                    ) : (
-                      filteredProducts.map((product) => (
-                        <button
-                          key={product.id}
-                          type="button"
-                          onClick={() => {
-                            handleAddItem(product)
-                            setSearchProductQuery('')
-                          }}
-                          className="w-full text-left p-2 hover:bg-accent rounded-md transition-colors"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-medium">{product.name}</p>
-                              <p className="text-xs text-muted-foreground">{product.sku}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm font-medium">
-                                {formatCurrency(product.costPrice || product.price * 0.6)}
-                              </p>
-                              <p className="text-xs text-muted-foreground">In stock: {product.quantity}</p>
-                            </div>
-                          </div>
-                        </button>
-                      ))
-                    )}
+                <div className="space-y-2">
+                  <Label htmlFor="expectedDeliveryDate">Expected Delivery</Label>
+                  <Input
+                    id="expectedDeliveryDate"
+                    type="date"
+                    value={formData.expectedDeliveryDate}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, expectedDeliveryDate: e.target.value }))
+                    }
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="notes">Notes</Label>
+                  <Textarea
+                    id="notes"
+                    value={formData.notes}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, notes: e.target.value }))
+                    }
+                    placeholder="Add any additional notes..."
+                    rows={3}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right Column - Items */}
+          <div className="lg:col-span-2 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ShoppingCart className="h-5 w-5" />
+                  Purchase Items
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Add Item */}
+                <div className="p-4 border rounded-lg bg-muted/50">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-medium">Add Product</h4>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsProductDialogOpen(true)}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Create New
+                    </Button>
                   </div>
-                </ScrollArea>
-              )}
-            </div>
-
-            {/* Items Table */}
-            {items.length > 0 && (
-              <div>
-                <h4 className="font-medium mb-3">Items ({items.length})</h4>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Product</TableHead>
-                      <TableHead className="text-right">Qty</TableHead>
-                      <TableHead className="text-right">Unit Cost</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="w-[50px]"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {items.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>
-                          <div className="font-medium">{item.productName}</div>
-                          <div className="text-xs text-muted-foreground">{item.sku}</div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              handleUpdateItemQuantity(item.id, parseInt(e.target.value) || 1)
-                            }
-                            className="w-20 text-right"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.unitCost}
-                            onChange={(e) =>
-                              handleUpdateItemCost(item.id, parseFloat(e.target.value) || 0)
-                            }
-                            className="w-24 text-right"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(item.total)}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleRemoveItem(item.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-
-            {/* Summary */}
-            {items.length > 0 && (
-              <div className="flex justify-end">
-                <div className="w-80 space-y-2 p-4 bg-muted rounded-lg">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span>{formatCurrency(subtotal)}</span>
+                  <div className="relative mb-3">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Search products by name or SKU..."
+                      value={searchProductQuery}
+                      onChange={(e) => setSearchProductQuery(e.target.value)}
+                      className="pl-10"
+                    />
                   </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">Tax</span>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={formData.taxRate}
-                        onChange={(e) =>
-                          setFormData({ ...formData, taxRate: parseFloat(e.target.value) || 0 })
-                        }
-                        className="w-16 text-right"
-                      />
-                      <span>%</span>
+
+                  {searchProductQuery && (
+                    <ScrollArea className="h-48 border rounded-md">
+                      <div className="p-2 space-y-1">
+                        {filteredProducts.length === 0 ? (
+                          <p className="text-sm text-muted-foreground p-2">No products found</p>
+                        ) : (
+                          filteredProducts.map((product) => (
+                            <button
+                              key={product.id}
+                              type="button"
+                              onClick={() => {
+                                handleAddItem(product)
+                                setSearchProductQuery('')
+                              }}
+                              className="w-full text-left p-2 hover:bg-accent rounded-md transition-colors"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-medium">{product.name}</p>
+                                  <p className="text-xs text-muted-foreground">{product.sku}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm font-medium">
+                                    ${(product.costPrice || product.price * 0.6).toFixed(2)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">In stock: {product.quantity}</p>
+                                </div>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </div>
+
+                {/* Items Table */}
+                {items.length > 0 && (
+                  <div className="border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Product</TableHead>
+                          <TableHead className="text-right">Quantity</TableHead>
+                          <TableHead className="text-right">Unit Cost</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
+                          <TableHead className="w-12"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {items.map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell>
+                              <div>
+                                <p className="font-medium">{item.productName}</p>
+                                {item.sku && (
+                                  <p className="text-xs text-muted-foreground">{item.sku}</p>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) =>
+                                  handleUpdateQuantity(item.id, parseInt(e.target.value) || 1)
+                                }
+                                className="w-20 ml-auto"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.unitCost}
+                                onChange={(e) =>
+                                  handleUpdateUnitCost(item.id, parseFloat(e.target.value) || 0)
+                                }
+                                className="w-24 ml-auto"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              ${item.total.toFixed(2)}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveItem(item.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                {/* Summary */}
+                <div className="flex justify-end">
+                  <div className="w-72 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span>${subtotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Tax ({formData.taxRate}%)</span>
+                      <span>${taxAmount.toFixed(2)}</span>
+                    </div>
+                    <Separator />
+                    <div className="flex justify-between text-lg font-bold">
+                      <span>Total</span>
+                      <span>${total.toFixed(2)}</span>
                     </div>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Tax Amount</span>
-                    <span>{formatCurrency(taxAmount)}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between font-medium text-lg">
-                    <span>Total</span>
-                    <span>{formatCurrency(total)}</span>
-                  </div>
                 </div>
-              </div>
-            )}
-          </CardContent>
-          <CardFooter className="flex justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => navigate('/purchases')}
-              disabled={isLoading}
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={isLoading || items.length === 0 || !formData.supplierId}
-            >
-              {isLoading ? (
-                'Creating...'
-              ) : (
-                <>
-                  <Check className="h-4 w-4 mr-2" />
-                  Create Purchase Order
-                </>
-              )}
-            </Button>
-          </CardFooter>
-        </Card>
+              </CardContent>
+            </Card>
+
+            {/* Submit Buttons */}
+            <div className="flex justify-end gap-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate('/purchases')}
+                disabled={isLoading}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isLoading || items.length === 0}>
+                <Check className="h-4 w-4 mr-2" />
+                {isLoading ? 'Creating...' : 'Create Purchase Order'}
+              </Button>
+            </div>
+          </div>
+        </div>
       </form>
+
+      {/* Product Creation Dialog */}
+      <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create New Product</DialogTitle>
+            <DialogDescription>
+              Add a new product and it will be automatically added to your purchase.
+            </DialogDescription>
+          </DialogHeader>
+          <NewProduct
+            inDialog={true}
+            onProductCreated={handleProductCreated}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
