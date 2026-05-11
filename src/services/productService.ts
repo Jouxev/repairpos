@@ -19,6 +19,7 @@ export interface Product {
   location?: string
   weight?: number
   dimensions?: string
+  image?: string
   createdAt: Date
   updatedAt: Date
 }
@@ -39,6 +40,7 @@ export interface CreateProductData {
   location?: string
   weight?: number
   dimensions?: string
+  image?: string
 }
 
 export interface UpdateProductData {
@@ -57,6 +59,7 @@ export interface UpdateProductData {
   location?: string
   weight?: number
   dimensions?: string
+  image?: string
 }
 
 export interface ProductFilters {
@@ -163,9 +166,22 @@ class ProductService {
         operation: 'create',
         args: {
           data: {
-            ...data,
+            name: data.name,
+            sku: data.sku,
+            barcode: data.barcode,
+            description: data.description,
+            categoryId: data.categoryId || null,
+            unit: data.unit,
             quantity: data.quantity || 0,
+            minQuantity: data.minQuantity || 0,
+            price: data.price,
+            costPrice: data.cost,
+            salePrice: data.sellingPrice,
             isActive: data.isActive ?? true,
+            location: data.location,
+            weight: data.weight,
+            dimensions: data.dimensions,
+            image: data.image,
           },
           include: {
             category: true,
@@ -187,7 +203,24 @@ class ProductService {
         operation: 'update',
         args: {
           where: { id },
-          data,
+          data: {
+            name: data.name,
+            sku: data.sku,
+            barcode: data.barcode,
+            description: data.description,
+            categoryId: data.categoryId,
+            unit: data.unit,
+            quantity: data.quantity,
+            minQuantity: data.minQuantity,
+            price: data.price,
+            costPrice: data.cost,
+            salePrice: data.sellingPrice,
+            isActive: data.isActive,
+            location: data.location,
+            weight: data.weight,
+            dimensions: data.dimensions,
+            image: data.image,
+          },
           include: {
             category: true,
           },

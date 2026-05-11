@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Plus, Search, Package, Loader2 } from 'lucide-react'
+import { Plus, Search, Package, Loader2, Tag } from 'lucide-react'
 import { productService, Product } from '@/services/productService'
 import { useToast } from '@/hooks/use-toast'
+import CategoryManagement from './CategoryManagement'
 
 export default function ProductsList() {
   const navigate = useNavigate()
@@ -13,6 +14,7 @@ export default function ProductsList() {
   const [searchQuery, setSearchQuery] = useState('')
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false)
 
   useEffect(() => {
     loadProducts()
@@ -35,11 +37,13 @@ export default function ProductsList() {
     }
   }
 
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (product.sku && product.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    (product.barcode && product.barcode.toLowerCase().includes(searchQuery.toLowerCase()))
-  )
+  const filteredProducts = Array.isArray(products)
+    ? products.filter(product =>
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (product.sku && product.sku.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (product.barcode && product.barcode.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+    : []
 
   return (
     <div className="space-y-6">
@@ -48,10 +52,19 @@ export default function ProductsList() {
           <h1 className="text-3xl font-bold tracking-tight">Products</h1>
           <p className="text-muted-foreground">Manage your inventory and products</p>
         </div>
-        <Button onClick={() => navigate('/products/new')}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Product
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setIsCategoryDialogOpen(true)}
+          >
+            <Tag className="mr-2 h-4 w-4" />
+            Categories
+          </Button>
+          <Button onClick={() => navigate('/products/new')}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Product
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -100,8 +113,8 @@ export default function ProductsList() {
                     </div>
                     <div className="text-right">
                       <p className="font-medium">${product.price?.toFixed(2) || '0.00'}</p>
-                      <p className={`text-sm ${(product.quantity || 0) < 10 ? 'text-red-600' : 'text-muted-foreground'}`}>
-                        {product.quantity || 0} in stock
+                      <p className={`text-sm ${product.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {product.quantity > 0 ? `${product.quantity} in stock` : 'Out of stock'}
                       </p>
                     </div>
                   </div>
@@ -111,6 +124,13 @@ export default function ProductsList() {
           )}
         </CardContent>
       </Card>
+
+      {/* Category Management Dialog */}
+      <CategoryManagement
+        isOpen={isCategoryDialogOpen}
+        onClose={() => setIsCategoryDialogOpen(false)}
+        onCategoriesUpdated={loadProducts}
+      />
     </div>
   )
 }
