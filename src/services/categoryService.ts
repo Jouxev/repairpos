@@ -2,10 +2,13 @@ export interface Category {
   id: string
   name: string
   description?: string
-  color?: string
+  color: string
   isActive: boolean
   createdAt: Date
   updatedAt: Date
+  _count?: {
+    products: number
+  }
 }
 
 export interface CreateCategoryData {
@@ -22,7 +25,11 @@ export interface UpdateCategoryData {
   isActive?: boolean
 }
 
-// Access the electronAPI exposed by preload script
+export interface CategoryFilters {
+  search?: string
+  isActive?: boolean
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -48,27 +55,26 @@ class CategoryService {
   }
 
   // Get all categories
-  async getCategories(filters?: { isActive?: boolean; search?: string }): Promise<Category[]> {
+  async getCategories(filters?: CategoryFilters): Promise<Category[]> {
     try {
-      const where: any = {}
-      
-      if (filters?.isActive !== undefined) {
-        where.isActive = filters.isActive
-      }
-      
-      if (filters?.search) {
-        where.name = { contains: filters.search, mode: 'insensitive' }
-      }
-
       const result = await electronAPI.db.query({
         model: 'category',
         operation: 'findMany',
         args: {
-          where,
-          orderBy: { name: 'asc' },
+          where: this.buildFilters(filters),
+          include: {
+            _count: {
+              select: {
+                products: true
+              }
+            }
+          },
+          orderBy: {
+            name: 'asc',
+          },
         },
       })
-      return result || []
+      return result?.data || []
     } catch (error) {
       console.error('Error fetching categories:', error)
       throw new Error('Failed to fetch categories')
@@ -81,9 +87,18 @@ class CategoryService {
       const result = await electronAPI.db.query({
         model: 'category',
         operation: 'findUnique',
-        args: { where: { id } },
+        args: {
+          where: { id },
+          include: {
+            _count: {
+              select: {
+                products: true
+              }
+            }
+          }
+        },
       })
-      return result
+      return result?.data
     } catch (error) {
       console.error('Error fetching category:', error)
       throw new Error('Failed to fetch category')
@@ -93,6 +108,24 @@ class CategoryService {
   // Create a new category
   async createCategory(data: CreateCategoryData): Promise<Category> {
     try {
+      // Check if category with same name already exists
+      const existing = await electronAPI.db.query({
+        model: 'category',
+        operation: 'findFirst',
+        args: {
+          where: {
+            name: {
+              equals: data.name,
+              mode: 'insensitive'
+            }
+          }
+        }
+      })
+
+      if (existing?.data) {
+        throw new Error('A category with this name already exists')
+      }
+
       const result = await electronAPI.db.query({
         model: 'category',
         operation: 'create',
@@ -105,16 +138,39 @@ class CategoryService {
           },
         },
       })
-      return result
+      return result?.data
     } catch (error) {
       console.error('Error creating category:', error)
-      throw new Error('Failed to create category')
+      throw error
     }
   }
 
   // Update a category
   async updateCategory(id: string, data: UpdateCategoryData): Promise<Category> {
     try {
+      // If name is being changed, check for duplicates
+      if (data.name) {
+        const existing = await electronAPI.db.query({
+          model: 'category',
+          operation: 'findFirst',
+          args: {
+            where: {
+              name: {
+                equals: data.name,
+                mode: 'insensitive'
+              },
+              NOT: {
+                id: id
+              }
+            }
+          }
+        })
+
+        if (existing?.data) {
+          throw new Error('A category with this name already exists')
+        }
+      }
+
       const result = await electronAPI.db.query({
         model: 'category',
         operation: 'update',
@@ -123,25 +179,51 @@ class CategoryService {
           data,
         },
       })
-      return result
+      return result?.data
     } catch (error) {
       console.error('Error updating category:', error)
-      throw new Error('Failed to update category')
+      throw error
     }
   }
 
   // Delete a category
   async deleteCategory(id: string): Promise<void> {
     try {
+      // Check if category has products
+      const category = await this.getCategoryById(id)
+      if (category?._count?.products && category._count.products > 0) {
+        throw new Error('Cannot delete category with existing products')
+      }
+
       await electronAPI.db.query({
         model: 'category',
         operation: 'delete',
-        args: { where: { id } },
+        args: {
+          where: { id },
+        },
       })
     } catch (error) {
       console.error('Error deleting category:', error)
-      throw new Error('Failed to delete category')
+      throw error
     }
+  }
+
+  // Build Prisma where clause from filters
+  private buildFilters(filters?: CategoryFilters): any {
+    const where: any = {}
+
+    if (filters?.search) {
+      where.OR = [
+        { name: { contains: filters.search, mode: 'insensitive' } },
+        { description: { contains: filters.search, mode: 'insensitive' } },
+      ]
+    }
+
+    if (filters?.isActive !== undefined) {
+      where.isActive = filters.isActive
+    }
+
+    return where
   }
 }
 

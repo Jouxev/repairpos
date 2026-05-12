@@ -19,10 +19,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeft, Save, Package, Upload, X, ImageIcon } from 'lucide-react'
+import { ArrowLeft, Save, Package, Upload, X, ImageIcon, Barcode, Printer, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { productService, CreateProductData } from '@/services/productService'
 import { categoryService, Category } from '@/services/categoryService'
+import { supplierService, Supplier } from '@/services/supplierService'
+import ProductLabel from './ProductLabel'
 
 // Electron API for file operations
 declare global {
@@ -38,14 +40,43 @@ interface NewProductProps {
   inDialog?: boolean
 }
 
+// Helper function to generate barcode
+const generateBarcode = (length: number = 12): string => {
+  const digits = '0123456789'
+  let result = ''
+  for (let i = 0; i < length; i++) {
+    result += digits.charAt(Math.floor(Math.random() * digits.length))
+  }
+  return result
+}
+
+// Helper function to generate SKU
+const generateSKU = (productName: string, categoryName?: string): string => {
+  const timestamp = Date.now().toString(36).toUpperCase()
+  const randomChars = Math.random().toString(36).substring(2, 5).toUpperCase()
+  
+  // Add category prefix if available
+  let prefix = 'SKU'
+  if (categoryName) {
+    prefix = categoryName.substring(0, 3).toUpperCase()
+  } else if (productName) {
+    prefix = productName.substring(0, 3).toUpperCase()
+  }
+  
+  return `${prefix}-${timestamp}-${randomChars}`
+}
+
 export default function NewProduct({ onProductCreated, inDialog = false }: NewProductProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageBase64, setImageBase64] = useState<string | null>(null)
+  const [showLabel, setShowLabel] = useState(false)
+  const [createdProduct, setCreatedProduct] = useState<any>(null)
   
   const [formData, setFormData] = useState<CreateProductData>({
     name: '',
@@ -53,7 +84,7 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
     barcode: '',
     description: '',
     categoryId: '',
-    unit: 'piece',
+    supplierId: '',
     quantity: 0,
     minQuantity: 0,
     price: 0,
@@ -70,6 +101,7 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
 
   useEffect(() => {
     loadCategories()
+    loadSuppliers()
   }, [])
 
   const loadCategories = async () => {
@@ -78,7 +110,15 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
       setCategories(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Error loading categories:', error)
-      setCategories([])
+    }
+  }
+
+  const loadSuppliers = async () => {
+    try {
+      const data = await supplierService.getSuppliers({ isActive: true })
+      setSuppliers(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error('Error loading suppliers:', error)
     }
   }
 
@@ -137,12 +177,32 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
     return `data:image/jpeg;base64,${base64Data}`
   }
 
+  const generateBarcodeHandler = () => {
+    const newBarcode = generateBarcode(12)
+    handleChange('barcode', newBarcode)
+    toast.success('Barcode generated')
+  }
+
+  const generateSKUHandler = () => {
+    const category = categories.find(c => c.id === formData.categoryId)
+    const newSKU = generateSKU(formData.name, category?.name)
+    handleChange('sku', newSKU)
+    toast.success('SKU generated')
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!formData.name.trim()) {
       toast.error('Product name is required')
       return
+    }
+
+    // Auto-generate SKU if empty
+    let finalSKU = formData.sku
+    if (!finalSKU.trim()) {
+      const category = categories.find(c => c.id === formData.categoryId)
+      finalSKU = generateSKU(formData.name, category?.name)
     }
 
     try {
@@ -157,11 +217,16 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
 
       const productData: CreateProductData = {
         ...formData,
+        sku: finalSKU,
         image: imageUrl,
       }
 
       const createdProduct = await productService.createProduct(productData)
       toast.success('Product created successfully')
+      
+      // Show label dialog
+      setCreatedProduct(createdProduct)
+      setShowLabel(true)
       
       // If we have a callback (for dialog mode), call it
       if (onProductCreated) {
@@ -226,46 +291,94 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
                 </div>
 
                 {/* SKU and Barcode */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="sku">SKU</Label>
-                    <Input
-                      id="sku"
-                      value={formData.sku}
-                      onChange={(e) => handleChange('sku', e.target.value)}
-                      placeholder="Enter SKU"
-                    />
+                    <Label htmlFor="sku">
+                      SKU
+                      <span className="text-xs text-muted-foreground ml-1">(Auto-generated if empty)</span>
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="sku"
+                        value={formData.sku}
+                        onChange={(e) => handleChange('sku', e.target.value)}
+                        placeholder="SKU-12345"
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={generateSKUHandler}
+                        title="Generate SKU"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="barcode">Barcode</Label>
-                    <Input
-                      id="barcode"
-                      value={formData.barcode}
-                      onChange={(e) => handleChange('barcode', e.target.value)}
-                      placeholder="Enter barcode"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        id="barcode"
+                        value={formData.barcode}
+                        onChange={(e) => handleChange('barcode', e.target.value)}
+                        placeholder="123456789012"
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={generateBarcodeHandler}
+                        title="Generate Barcode"
+                      >
+                        <Barcode className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
-                {/* Category */}
-                <div className="space-y-2">
-                  <Label htmlFor="category">Category</Label>
-                  <Select
-                    value={formData.categoryId || 'none'}
-                    onValueChange={(value) => handleChange('categoryId', value === 'none' ? '' : value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No Category</SelectItem>
-                      {Array.isArray(categories) && categories.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          {category.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                {/* Category and Supplier */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="category">Category</Label>
+                    <Select
+                      value={formData.categoryId || 'none'}
+                      onValueChange={(value) => handleChange('categoryId', value === 'none' ? '' : value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Category</SelectItem>
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="supplier">Supplier</Label>
+                    <Select
+                      value={formData.supplierId || 'none'}
+                      onValueChange={(value) => handleChange('supplierId', value === 'none' ? '' : value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a supplier" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Supplier</SelectItem>
+                        {suppliers.map((supplier) => (
+                          <SelectItem key={supplier.id} value={supplier.id}>
+                            {supplier.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 {/* Description */}
@@ -363,36 +476,12 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
                 {/* Unit and Location */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="unit">Unit of Measurement</Label>
-                    <Input
-                      id="unit"
-                      value={formData.unit}
-                      onChange={(e) => handleChange('unit', e.target.value)}
-                      placeholder="e.g., piece, kg, liter, box"
-                    />
-                  </div>
-                  <div className="space-y-2">
                     <Label htmlFor="location">Storage Location</Label>
                     <Input
                       id="location"
                       value={formData.location}
                       onChange={(e) => handleChange('location', e.target.value)}
                       placeholder="e.g., Warehouse A, Shelf 3"
-                    />
-                  </div>
-                </div>
-
-                {/* Weight and Dimensions */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="weight">Weight (kg)</Label>
-                    <Input
-                      id="weight"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={formData.weight}
-                      onChange={(e) => handleChange('weight', parseFloat(e.target.value) || 0)}
                     />
                   </div>
                   <div className="space-y-2">
@@ -404,6 +493,19 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
                       placeholder="e.g., 10 x 5 x 2 cm"
                     />
                   </div>
+                </div>
+
+                {/* Weight */}
+                <div className="space-y-2">
+                  <Label htmlFor="weight">Weight (kg)</Label>
+                  <Input
+                    id="weight"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.weight}
+                    onChange={(e) => handleChange('weight', parseFloat(e.target.value) || 0)}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -506,6 +608,14 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
           </div>
         </div>
       </form>
+
+      {/* Product Label Dialog */}
+      {showLabel && createdProduct && (
+        <ProductLabel
+          product={createdProduct}
+          onClose={() => setShowLabel(false)}
+        />
+      )}
     </>
   )
 }

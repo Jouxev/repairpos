@@ -59,6 +59,8 @@ import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/authStore'
 import ActivityLogService from '@/services/activityLogService' 
 import  printingService  from '@/services/printingService'
+import CustomerSearch from '@/components/CustomerSearch'
+import { Client } from '@/services/clientService'
 
 interface CartItem {
   id: string
@@ -212,6 +214,7 @@ export default function POS() {
     setCart([])
     setCartDiscount(null)
     setItemDiscounts({})
+    setSelectedCustomer(null)
     setCustomerName('')
     setCustomerPhone('')
     setNotes('')
@@ -378,6 +381,8 @@ export default function POS() {
           total: totals.total,
           items: cart.length,
           paymentMethod: selectedPaymentMethod,
+          customerId: selectedCustomer?.id,
+          customerName: selectedCustomer?.fullName,
         },
       })
 
@@ -426,6 +431,7 @@ export default function POS() {
   const [printReceipt, setPrintReceipt] = useState(true)
   const [quickAmount, setQuickAmount] = useState<string>('')
   const [amountReceived, setAmountReceived] = useState<string>('')
+  const [selectedCustomer, setSelectedCustomer] = useState<Client | null>(null)
 
   const totals = calculateTotals()
   const changeDue = parseFloat(amountReceived || '0') - totals.total
@@ -596,22 +602,43 @@ export default function POS() {
 
           <CardContent className="flex-1 flex flex-col p-0">
             {/* Customer Info */}
-            <div className="px-4 pb-4 space-y-3 border-b">
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-muted-foreground" />
+            <div className="px-4 py-3 border-b space-y-3">
+              {selectedCustomer ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{selectedCustomer.fullName}</p>
+                      <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>
+                    </div>
+                  </div>
+                  <CustomerSearch onSelect={setSelectedCustomer}>
+                    <Button variant="outline" size="sm" className="w-full">
+                      Change Customer
+                    </Button>
+                  </CustomerSearch>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <User className="h-4 w-4" />
+                    <span className="text-sm">No customer selected</span>
+                  </div>
+                  <CustomerSearch onSelect={setSelectedCustomer}>
+                    <Button variant="outline" size="sm" className="w-full">
+                      <Search className="mr-2 h-4 w-4" />
+                      Select Customer
+                    </Button>
+                  </CustomerSearch>
+                </div>
+              )}
+              
+              {/* Additional notes field */}
+              <div className="pt-2 border-t">
                 <Input
-                  placeholder="Customer name (optional)"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  className="h-8 text-sm"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Smartphone className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Phone number (optional)"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="Add notes (optional)"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
                   className="h-8 text-sm"
                 />
               </div>

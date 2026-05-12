@@ -53,6 +53,8 @@ import {
 import { toast } from 'sonner'
 import { salesService, CreateSaleInput } from '@/services/salesService'
 import { productService, Product } from '@/services/productService'
+import CustomerSearch from '@/components/CustomerSearch'
+import { Client } from '@/services/clientService'
 
 // Helper function to format currency
 const formatCurrency = (amount: number) => {
@@ -89,6 +91,7 @@ export default function NewSale() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [customer, setCustomer] = useState<CustomerInfo>({ name: '', phone: '', email: '' })
+  const [selectedCustomer, setSelectedCustomer] = useState<Client | null>(null)
   const [notes, setNotes] = useState('')
   const [taxRate, setTaxRate] = useState(0)
   const [discountAmount, setDiscountAmount] = useState(0)
@@ -358,36 +361,70 @@ export default function NewSale() {
                 <User className="h-5 w-5" />
                 Customer Information
               </CardTitle>
-              <CardDescription>Optional customer details</CardDescription>
+              <CardDescription>Search for an existing customer or enter details manually</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="customerName">Name</Label>
-                  <Input
-                    id="customerName"
-                    placeholder="Customer name"
-                    value={customer.name}
-                    onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
-                  />
+              <div className="space-y-4">
+                {/* Customer Search */}
+                <div className="flex gap-2">
+                  <CustomerSearch 
+                    onSelect={(customer) => {
+                      setSelectedCustomer(customer)
+                      setCustomer({
+                        name: customer.fullName,
+                        phone: customer.phone,
+                        email: customer.email || ''
+                      })
+                    }}
+                  >
+                    <Button variant="outline" className="w-full justify-start">
+                      <User className="mr-2 h-4 w-4" />
+                      {selectedCustomer ? selectedCustomer.fullName : 'Search Customer'}
+                    </Button>
+                  </CustomerSearch>
+                  {selectedCustomer && (
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      onClick={() => {
+                        setSelectedCustomer(null)
+                        setCustomer({ name: '', phone: '', email: '' })
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="customerPhone">Phone</Label>
-                  <Input
-                    id="customerPhone"
-                    placeholder="Phone number"
-                    value={customer.phone}
-                    onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="customerEmail">Email</Label>
-                  <Input
-                    id="customerEmail"
-                    placeholder="Email address"
-                    value={customer.email}
-                    onChange={(e) => setCustomer({ ...customer, email: e.target.value })}
-                  />
+
+                {/* Manual Entry */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="customerName">Name</Label>
+                    <Input
+                      id="customerName"
+                      placeholder="Customer name"
+                      value={customer.name}
+                      onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="customerPhone">Phone</Label>
+                    <Input
+                      id="customerPhone"
+                      placeholder="Phone number"
+                      value={customer.phone}
+                      onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="customerEmail">Email</Label>
+                    <Input
+                      id="customerEmail"
+                      placeholder="Email address"
+                      value={customer.email}
+                      onChange={(e) => setCustomer({ ...customer, email: e.target.value })}
+                    />
+                  </div>
                 </div>
               </div>
             </CardContent>

@@ -9,7 +9,11 @@ export interface Product {
     id: string
     name: string
   }
-  unit?: string
+  supplierId?: string
+  supplier?: {
+    id: string
+    name: string
+  }
   quantity: number
   minQuantity?: number
   price: number
@@ -30,7 +34,7 @@ export interface CreateProductData {
   barcode?: string
   description?: string
   categoryId?: string
-  unit?: string
+  supplierId?: string
   quantity?: number
   minQuantity?: number
   price: number
@@ -49,7 +53,7 @@ export interface UpdateProductData {
   barcode?: string
   description?: string
   categoryId?: string
-  unit?: string
+  supplierId?: string
   quantity?: number
   minQuantity?: number
   price?: number
@@ -111,7 +115,7 @@ class ProductService {
           },
         },
       })
-      return result || []
+      return result?.data || []
     } catch (error) {
       console.error('Error fetching products:', error)
       throw new Error('Failed to fetch products')
@@ -131,7 +135,7 @@ class ProductService {
           },
         },
       })
-      return result
+      return result?.data || null
     } catch (error) {
       console.error('Error fetching product:', error)
       throw new Error('Failed to fetch product')
@@ -161,34 +165,50 @@ class ProductService {
   // Create a new product
   async createProduct(data: CreateProductData): Promise<Product> {
     try {
+      // Build the create data object dynamically
+      const createData: any = {
+        name: data.name,
+        sku: data.sku,
+        barcode: data.barcode,
+        description: data.description,
+        quantity: data.quantity || 0,
+        minQuantity: data.minQuantity || 0,
+        price: data.price,
+        costPrice: data.cost,
+        salePrice: data.sellingPrice,
+        isActive: data.isActive ?? true,
+        location: data.location,
+        weight: data.weight,
+        dimensions: data.dimensions,
+        image: data.image,
+      }
+
+      // Use Prisma's connect syntax for category relation
+      if (data.categoryId) {
+        createData.category = {
+          connect: { id: data.categoryId }
+        }
+      }
+
+      // Use Prisma's connect syntax for supplier relation
+      if (data.supplierId) {
+        createData.supplier = {
+          connect: { id: data.supplierId }
+        }
+      }
+
       const result = await electronAPI.db.query({
         model: 'product',
         operation: 'create',
         args: {
-          data: {
-            name: data.name,
-            sku: data.sku,
-            barcode: data.barcode,
-            description: data.description,
-            categoryId: data.categoryId || null,
-            unit: data.unit,
-            quantity: data.quantity || 0,
-            minQuantity: data.minQuantity || 0,
-            price: data.price,
-            costPrice: data.cost,
-            salePrice: data.sellingPrice,
-            isActive: data.isActive ?? true,
-            location: data.location,
-            weight: data.weight,
-            dimensions: data.dimensions,
-            image: data.image,
-          },
+          data: createData,
           include: {
             category: true,
+            supplier: true,
           },
         },
       })
-      return result
+      return result?.data
     } catch (error) {
       console.error('Error creating product:', error)
       throw new Error('Failed to create product')
@@ -198,35 +218,59 @@ class ProductService {
   // Update a product
   async updateProduct(id: string, data: UpdateProductData): Promise<Product> {
     try {
+      // Build update data dynamically
+      const updateData: any = {
+        name: data.name,
+        sku: data.sku,
+        barcode: data.barcode,
+        description: data.description,
+        quantity: data.quantity,
+        minQuantity: data.minQuantity,
+        price: data.price,
+        costPrice: data.cost,
+        salePrice: data.sellingPrice,
+        isActive: data.isActive,
+        location: data.location,
+        weight: data.weight,
+        dimensions: data.dimensions,
+        image: data.image,
+      }
+
+      // Use Prisma's connect/disconnect syntax for category
+      if (data.categoryId !== undefined) {
+        if (data.categoryId === null || data.categoryId === '') {
+          // Disconnect category
+          updateData.category = { disconnect: true }
+        } else {
+          // Connect new category
+          updateData.category = { connect: { id: data.categoryId } }
+        }
+      }
+
+      // Use Prisma's connect/disconnect syntax for supplier
+      if (data.supplierId !== undefined) {
+        if (data.supplierId === null || data.supplierId === '') {
+          // Disconnect supplier
+          updateData.supplier = { disconnect: true }
+        } else {
+          // Connect new supplier
+          updateData.supplier = { connect: { id: data.supplierId } }
+        }
+      }
+
       const result = await electronAPI.db.query({
         model: 'product',
         operation: 'update',
         args: {
           where: { id },
-          data: {
-            name: data.name,
-            sku: data.sku,
-            barcode: data.barcode,
-            description: data.description,
-            categoryId: data.categoryId,
-            unit: data.unit,
-            quantity: data.quantity,
-            minQuantity: data.minQuantity,
-            price: data.price,
-            costPrice: data.cost,
-            salePrice: data.sellingPrice,
-            isActive: data.isActive,
-            location: data.location,
-            weight: data.weight,
-            dimensions: data.dimensions,
-            image: data.image,
-          },
+          data: updateData,
           include: {
             category: true,
+            supplier: true,
           },
         },
       })
-      return result
+      return result?.data
     } catch (error) {
       console.error('Error updating product:', error)
       throw new Error('Failed to update product')

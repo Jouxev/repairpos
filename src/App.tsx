@@ -162,6 +162,11 @@ function App() {
               <ClientDetail />
             </ProtectedRoute>
           } />
+          <Route path="/clients/:id/edit" element={
+            <ProtectedRoute>
+              <NewClient />
+            </ProtectedRoute>
+          } />
 
           {/* Cash Register */}
           <Route path="/cash-register" element={

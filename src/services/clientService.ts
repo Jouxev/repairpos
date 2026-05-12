@@ -4,11 +4,10 @@ export interface Client {
   phone: string
   email?: string
   address?: string
-  city?: string
   notes?: string
+  isActive: boolean
   balance: number
   loyaltyPoints: number
-  isActive: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -18,7 +17,6 @@ export interface CreateClientData {
   phone: string
   email?: string
   address?: string
-  city?: string
   notes?: string
   isActive?: boolean
 }
@@ -28,18 +26,14 @@ export interface UpdateClientData {
   phone?: string
   email?: string
   address?: string
-  city?: string
   notes?: string
   isActive?: boolean
 }
 
 export interface ClientFilters {
   search?: string
-  isActive?: boolean
-  hasBalance?: boolean
 }
 
-// Access the electronAPI exposed by preload script
 declare global {
   interface Window {
     electronAPI: {
@@ -77,7 +71,7 @@ class ClientService {
           },
         },
       })
-      return result || []
+      return result?.data || []
     } catch (error) {
       console.error('Error fetching clients:', error)
       throw new Error('Failed to fetch clients')
@@ -94,21 +88,33 @@ class ClientService {
           where: { id },
         },
       })
-      return result
+      return result?.data
     } catch (error) {
       console.error('Error fetching client:', error)
       throw new Error('Failed to fetch client')
     }
   }
 
+  // Get client by phone number
+  async getClientByPhone(phone: string): Promise<Client | null> {
+    try {
+      const result = await electronAPI.db.query({
+        model: 'client',
+        operation: 'findFirst',
+        args: {
+          where: { phone },
+        },
+      })
+      return result?.data
+    } catch (error) {
+      console.error('Error fetching client by phone:', error)
+      throw new Error('Failed to fetch client by phone')
+    }
+  }
+
   // Create a new client
   async createClient(data: CreateClientData): Promise<Client> {
     try {
-      // Combine city with address if city is provided
-      const fullAddress = data.city 
-        ? `${data.address}${data.address ? ', ' : ''}${data.city}`
-        : data.address
-
       const result = await electronAPI.db.query({
         model: 'client',
         operation: 'create',
@@ -117,15 +123,14 @@ class ClientService {
             fullName: data.fullName,
             phone: data.phone,
             email: data.email,
-            address: fullAddress,
+            address: data.address,
             notes: data.notes,
-            isActive: data.isActive ?? true,
             balance: 0,
             loyaltyPoints: 0,
           },
         },
       })
-      return result
+      return result?.data
     } catch (error) {
       console.error('Error creating client:', error)
       throw new Error('Failed to create client')
@@ -135,23 +140,23 @@ class ClientService {
   // Update a client
   async updateClient(id: string, data: UpdateClientData): Promise<Client> {
     try {
+      // Build update data dynamically
+      const updateData: any = {}
+      if (data.fullName !== undefined) updateData.fullName = data.fullName
+      if (data.phone !== undefined) updateData.phone = data.phone
+      if (data.email !== undefined) updateData.email = data.email
+      if (data.address !== undefined) updateData.address = data.address
+      if (data.notes !== undefined) updateData.notes = data.notes
+
       const result = await electronAPI.db.query({
         model: 'client',
         operation: 'update',
         args: {
           where: { id },
-          data: {
-            fullName: data.fullName,
-            phone: data.phone,
-            email: data.email,
-            address: data.address,
-            city: data.city,
-            notes: data.notes,
-            isActive: data.isActive,
-          },
+          data: updateData,
         },
       })
-      return result
+      return result?.data
     } catch (error) {
       console.error('Error updating client:', error)
       throw new Error('Failed to update client')
@@ -192,7 +197,7 @@ class ClientService {
           data: { balance: newBalance },
         },
       })
-      return result
+      return result?.data
     } catch (error) {
       console.error('Error updating client balance:', error)
       throw new Error('Failed to update client balance')
@@ -217,7 +222,7 @@ class ClientService {
           data: { loyaltyPoints: newPoints },
         },
       })
-      return result
+      return result?.data
     } catch (error) {
       console.error('Error adding loyalty points:', error)
       throw new Error('Failed to add loyalty points')
@@ -234,14 +239,6 @@ class ClientService {
         { phone: { contains: filters.search, mode: 'insensitive' } },
         { email: { contains: filters.search, mode: 'insensitive' } },
       ]
-    }
-
-    if (filters?.isActive !== undefined) {
-      where.isActive = filters.isActive
-    }
-
-    if (filters?.hasBalance) {
-      where.balance = { gt: 0 }
     }
 
     return where
