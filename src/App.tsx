@@ -145,6 +145,11 @@ function App() {
               <ProductDetail />
             </ProtectedRoute>
           } />
+          <Route path="/products/:id/edit" element={
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
+              <NewProduct />
+            </ProtectedRoute>
+          } />
 
           {/* Clients */}
           <Route path="/clients" element={

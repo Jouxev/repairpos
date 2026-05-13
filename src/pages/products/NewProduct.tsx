@@ -19,12 +19,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowLeft, Save, Package, Upload, X, ImageIcon, Barcode, Printer, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Save, Package, Upload, X, ImageIcon, Barcode, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { productService, CreateProductData } from '@/services/productService'
 import { categoryService, Category } from '@/services/categoryService'
 import { supplierService, Supplier } from '@/services/supplierService'
-import ProductLabel from './ProductLabel'
 
 // Electron API for file operations
 declare global {
@@ -75,8 +74,6 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageBase64, setImageBase64] = useState<string | null>(null)
-  const [showLabel, setShowLabel] = useState(false)
-  const [createdProduct, setCreatedProduct] = useState<any>(null)
   
   const [formData, setFormData] = useState<CreateProductData>({
     name: '',
@@ -86,14 +83,13 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
     categoryId: '',
     supplierId: '',
     quantity: 0,
-    minQuantity: 0,
-    price: 0,
-    cost: 0,
-    sellingPrice: 0,
+    minStockAlert: 1,
+    costPrice: 0,
+    salePrice: 0,
+    salePrice2: 0,
+    salePrice3: 0,
     isActive: true,
     location: '',
-    weight: 0,
-    dimensions: '',
   })
 
   // Check if we came from purchase page
@@ -220,13 +216,9 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
         sku: finalSKU,
         image: imageUrl,
       }
-
+      console.log(productData)
       const createdProduct = await productService.createProduct(productData)
       toast.success('Product created successfully')
-      
-      // Show label dialog
-      setCreatedProduct(createdProduct)
-      setShowLabel(true)
       
       // If we have a callback (for dialog mode), call it
       if (onProductCreated) {
@@ -245,7 +237,7 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
       setIsLoading(false)
     }
   }
-
+ 
   return (
     <>
       {/* Header - only show if not in dialog */}
@@ -260,6 +252,7 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
+          
           </div>
         </div>
       )}
@@ -415,36 +408,36 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
                 {/* Pricing */}
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="cost">Cost Price</Label>
+                    <Label htmlFor="costPrice">Cost Price</Label>
                     <Input
-                      id="cost"
+                      id="costPrice"
                       type="number"
                       min="0"
                       step="0.01"
-                      value={formData.cost}
-                      onChange={(e) => handleChange('cost', parseFloat(e.target.value) || 0)}
+                      value={formData.costPrice}
+                      onChange={(e) => handleChange('costPrice', parseFloat(e.target.value) || 0)}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="price">Base Price</Label>
+                    <Label htmlFor="salePrice">Selling Price</Label>
                     <Input
-                      id="price"
+                      id="salePrice"
                       type="number"
                       min="0"
                       step="0.01"
-                      value={formData.price}
-                      onChange={(e) => handleChange('price', parseFloat(e.target.value) || 0)}
+                      value={formData.salePrice}
+                      onChange={(e) => handleChange('salePrice', parseFloat(e.target.value) || 0)}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="sellingPrice">Selling Price</Label>
+                    <Label htmlFor="salePrice2">Sale Price 2</Label>
                     <Input
-                      id="sellingPrice"
+                      id="salePrice2"
                       type="number"
                       min="0"
                       step="0.01"
-                      value={formData.sellingPrice}
-                      onChange={(e) => handleChange('sellingPrice', parseFloat(e.target.value) || 0)}
+                      value={formData.salePrice2}
+                      onChange={(e) => handleChange('salePrice2', parseFloat(e.target.value) || 0)}
                     />
                   </div>
                 </div>
@@ -462,49 +455,25 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="minQuantity">Min Quantity (Low Stock Alert)</Label>
+                    <Label htmlFor="minStockAlert">Min Stock Alert</Label>
                     <Input
-                      id="minQuantity"
+                      id="minStockAlert"
                       type="number"
                       min="0"
-                      value={formData.minQuantity}
-                      onChange={(e) => handleChange('minQuantity', parseInt(e.target.value) || 0)}
+                      value={formData.minStockAlert}
+                      onChange={(e) => handleChange('minStockAlert', parseInt(e.target.value) || 5)}
                     />
                   </div>
                 </div>
 
-                {/* Unit and Location */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="location">Storage Location</Label>
-                    <Input
-                      id="location"
-                      value={formData.location}
-                      onChange={(e) => handleChange('location', e.target.value)}
-                      placeholder="e.g., Warehouse A, Shelf 3"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="dimensions">Dimensions (L x W x H)</Label>
-                    <Input
-                      id="dimensions"
-                      value={formData.dimensions}
-                      onChange={(e) => handleChange('dimensions', e.target.value)}
-                      placeholder="e.g., 10 x 5 x 2 cm"
-                    />
-                  </div>
-                </div>
-
-                {/* Weight */}
+                {/* Location */}
                 <div className="space-y-2">
-                  <Label htmlFor="weight">Weight (kg)</Label>
+                  <Label htmlFor="location">Storage Location</Label>
                   <Input
-                    id="weight"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={formData.weight}
-                    onChange={(e) => handleChange('weight', parseFloat(e.target.value) || 0)}
+                    id="location"
+                    value={formData.location}
+                    onChange={(e) => handleChange('location', e.target.value)}
+                    placeholder="e.g., Warehouse A, Shelf 3"
                   />
                 </div>
               </CardContent>
@@ -574,13 +543,13 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Stock Value:</span>
-                  <span>${(formData.cost * formData.quantity).toFixed(2)}</span>
+                  <span>${(formData.costPrice * formData.quantity).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Profit Margin:</span>
                   <span>
-                    {formData.cost > 0
-                      ? (((formData.sellingPrice - formData.cost) / formData.cost) * 100).toFixed(1)
+                    {formData.costPrice > 0
+                      ? (((formData.salePrice - formData.costPrice) / formData.costPrice) * 100).toFixed(1)
                       : '0'}%
                   </span>
                 </div>
@@ -608,14 +577,6 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
           </div>
         </div>
       </form>
-
-      {/* Product Label Dialog */}
-      {showLabel && createdProduct && (
-        <ProductLabel
-          product={createdProduct}
-          onClose={() => setShowLabel(false)}
-        />
-      )}
     </>
   )
 }

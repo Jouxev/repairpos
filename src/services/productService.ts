@@ -15,14 +15,13 @@ export interface Product {
     name: string
   }
   quantity: number
-  minQuantity?: number
-  price: number
-  cost?: number
-  sellingPrice?: number
+  minStockAlert?: number
+  costPrice?: number
+  salePrice?: number
+  salePrice2?: number
+  salePrice3?: number
   isActive: boolean
   location?: string
-  weight?: number
-  dimensions?: string
   image?: string
   createdAt: Date
   updatedAt: Date
@@ -36,14 +35,13 @@ export interface CreateProductData {
   categoryId?: string
   supplierId?: string
   quantity?: number
-  minQuantity?: number
-  price: number
-  cost?: number
-  sellingPrice?: number
+  minStockAlert?: number
+  costPrice?: number
+  salePrice?: number
+  salePrice2?: number
+  salePrice3?: number
   isActive?: boolean
   location?: string
-  weight?: number
-  dimensions?: string
   image?: string
 }
 
@@ -55,14 +53,13 @@ export interface UpdateProductData {
   categoryId?: string
   supplierId?: string
   quantity?: number
-  minQuantity?: number
-  price?: number
-  cost?: number
-  sellingPrice?: number
+  minStockAlert?: number
+  costPrice?: number
+  salePrice?: number
+  salePrice2?: number
+  salePrice3?: number
   isActive?: boolean
   location?: string
-  weight?: number
-  dimensions?: string
   image?: string
 }
 
@@ -109,13 +106,14 @@ class ProductService {
           where: this.buildFilters(filters),
           include: {
             category: true,
+            supplier: true,
           },
           orderBy: {
             name: 'asc',
           },
         },
       })
-      return result?.data || []
+      return result || []
     } catch (error) {
       console.error('Error fetching products:', error)
       throw new Error('Failed to fetch products')
@@ -132,10 +130,11 @@ class ProductService {
           where: { id },
           include: {
             category: true,
+            supplier: true,
           },
         },
       })
-      return result?.data || null
+      return result || null
     } catch (error) {
       console.error('Error fetching product:', error)
       throw new Error('Failed to fetch product')
@@ -152,10 +151,11 @@ class ProductService {
           where: { barcode },
           include: {
             category: true,
+            supplier: true,
           },
         },
       })
-      return result
+      return result || null
     } catch (error) {
       console.error('Error fetching product by barcode:', error)
       throw new Error('Failed to fetch product by barcode')
@@ -165,22 +165,22 @@ class ProductService {
   // Create a new product
   async createProduct(data: CreateProductData): Promise<Product> {
     try {
-      // Build the create data object dynamically
+      // Build the create data object - match Prisma schema exactly
       const createData: any = {
         name: data.name,
-        sku: data.sku,
-        barcode: data.barcode,
-        description: data.description,
-        quantity: data.quantity || 0,
-        minQuantity: data.minQuantity || 0,
-        price: data.price,
-        costPrice: data.cost,
-        salePrice: data.sellingPrice,
+        sku: data.sku || null,
+        barcode: data.barcode || null,
+        description: data.description || null,
+        quantity: data.quantity ?? 0,
+        minStockAlert: data.minStockAlert ?? 5,
+        costPrice: data.costPrice ?? 0,
+        salePrice: data.salePrice ?? 0,
+        salePrice2: data.salePrice2 ?? 0,
+        salePrice3: data.salePrice3 ?? 0,
         isActive: data.isActive ?? true,
-        location: data.location,
-        weight: data.weight,
-        dimensions: data.dimensions,
-        image: data.image,
+        location: data.location || null,
+      
+        image: data.image || null,
       }
 
       // Use Prisma's connect syntax for category relation
@@ -208,7 +208,7 @@ class ProductService {
           },
         },
       })
-      return result?.data
+      return result
     } catch (error) {
       console.error('Error creating product:', error)
       throw new Error('Failed to create product')
@@ -218,17 +218,18 @@ class ProductService {
   // Update a product
   async updateProduct(id: string, data: UpdateProductData): Promise<Product> {
     try {
-      // Build update data dynamically
+      // Build update data - match Prisma schema
       const updateData: any = {
         name: data.name,
         sku: data.sku,
         barcode: data.barcode,
         description: data.description,
         quantity: data.quantity,
-        minQuantity: data.minQuantity,
-        price: data.price,
-        costPrice: data.cost,
-        salePrice: data.sellingPrice,
+        minStockAlert: data.minStockAlert,
+        costPrice: data.costPrice,
+        salePrice: data.salePrice,
+        salePrice2: data.salePrice2,
+        salePrice3: data.salePrice3,
         isActive: data.isActive,
         location: data.location,
         weight: data.weight,
@@ -236,13 +237,18 @@ class ProductService {
         image: data.image,
       }
 
+      // Remove undefined values
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === undefined) {
+          delete updateData[key]
+        }
+      })
+
       // Use Prisma's connect/disconnect syntax for category
       if (data.categoryId !== undefined) {
         if (data.categoryId === null || data.categoryId === '') {
-          // Disconnect category
           updateData.category = { disconnect: true }
         } else {
-          // Connect new category
           updateData.category = { connect: { id: data.categoryId } }
         }
       }
@@ -250,10 +256,8 @@ class ProductService {
       // Use Prisma's connect/disconnect syntax for supplier
       if (data.supplierId !== undefined) {
         if (data.supplierId === null || data.supplierId === '') {
-          // Disconnect supplier
           updateData.supplier = { disconnect: true }
         } else {
-          // Connect new supplier
           updateData.supplier = { connect: { id: data.supplierId } }
         }
       }
@@ -270,7 +274,7 @@ class ProductService {
           },
         },
       })
-      return result?.data
+      return result
     } catch (error) {
       console.error('Error updating product:', error)
       throw new Error('Failed to update product')
@@ -304,6 +308,7 @@ class ProductService {
           data: { quantity },
           include: {
             category: true,
+            supplier: true,
           },
         },
       })
@@ -327,28 +332,13 @@ class ProductService {
   // Get low stock products
   async getLowStockProducts(): Promise<Product[]> {
     try {
-      const result = await electronAPI.db.query({
-        model: 'product',
-        operation: 'findMany',
-        args: {
-          where: {
-            isActive: true,
-            minQuantity: {
-              gt: 0,
-            },
-            quantity: {
-              lte: { minQuantity: true },
-            },
-          },
-          include: {
-            category: true,
-          },
-          orderBy: {
-            quantity: 'asc',
-          },
-        },
-      })
-      return result || []
+      const products = await this.getProducts()
+      return products.filter(p => 
+        p.isActive && 
+        p.minStockAlert && 
+        p.minStockAlert > 0 && 
+        p.quantity <= p.minStockAlert
+      )
     } catch (error) {
       console.error('Error fetching low stock products:', error)
       throw new Error('Failed to fetch low stock products')
@@ -365,11 +355,11 @@ class ProductService {
     try {
       const products = await this.getProducts()
       const totalValue = products.reduce(
-        (sum, p) => sum + p.quantity * (p.cost || p.price || 0),
+        (sum, p) => sum + p.quantity * (p.costPrice || 0),
         0
       )
       const lowStock = products.filter(
-        (p) => p.isActive && p.minQuantity && p.quantity <= p.minQuantity
+        (p) => p.isActive && p.minStockAlert && p.quantity <= p.minStockAlert
       )
       const outOfStock = products.filter((p) => p.isActive && p.quantity === 0)
 

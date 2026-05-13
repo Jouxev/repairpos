@@ -134,9 +134,10 @@ export default function RepairDetail() {
   const loadProducts = async () => {
     try {
       const data = await productService.getProducts()
-      setProducts(data)
+      setProducts(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Error loading products:', error)
+      setProducts([])
     }
   }
 
