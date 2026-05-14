@@ -24,7 +24,8 @@ export default function ProductsList() {
     try {
       setIsLoading(true)
       const data = await productService.getProducts()
-      setProducts(data)
+      setProducts(data.data)
+    
     } catch (error) {
       console.error('Error loading products:', error)
       toast({

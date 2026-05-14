@@ -79,6 +79,11 @@ export default function RepairDetail() {
   const [partQuantity, setPartQuantity] = useState(1)
   const [partUnitPrice, setPartUnitPrice] = useState(0)
   const [isAddingPart, setIsAddingPart] = useState(false)
+  const [addPartTab, setAddPartTab] = useState<'database' | 'quick'>('database')
+  
+  // Quick add part form
+  const [quickPartName, setQuickPartName] = useState('')
+  const [quickPartCost, setQuickPartCost] = useState(0)
 
   // Technician assignment
   const [technicians, setTechnicians] = useState<UserType[]>([])
@@ -134,9 +139,10 @@ export default function RepairDetail() {
   const loadProducts = async () => {
     try {
       const data = await productService.getProducts()
-      setProducts(data)
+      setProducts(Array.isArray(data) ? data.data : [])
     } catch (error) {
       console.error('Error loading products:', error)
+      setProducts([])
     }
   }
 
@@ -172,7 +178,8 @@ export default function RepairDetail() {
   }
 
   const handleAddPart = async () => {
-    if (!selectedProduct) {
+    // Database tab: requires product selection
+    if (addPartTab === 'database' && !selectedProduct) {
       toast({
         title: 'Error',
         description: 'Please select a product',
@@ -181,20 +188,47 @@ export default function RepairDetail() {
       return
     }
 
-    try {
-      await repairService.addPart(id!, {
-        productId: selectedProduct.id,
-        quantity: partQuantity,
-        unitPrice: partUnitPrice
+    // Quick tab: requires name
+    if (addPartTab === 'quick' && !quickPartName.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Please enter a part name',
+        variant: 'destructive',
       })
+      return
+    }
+
+    try {
+      if (addPartTab === 'database' && selectedProduct) {
+        // Database product selection
+        await repairService.addPart(id!, {
+          productId: selectedProduct.id,
+          quantity: partQuantity,
+          unitPrice: partUnitPrice
+        })
+      } else {
+        // Quick manual entry - create part without product link
+        await repairService.addPart(id!, {
+          productId: '', // Empty for manual parts
+          quantity: partQuantity,
+          unitPrice: quickPartCost,
+          notes: quickPartName // Store name in notes
+        })
+      }
+      
       toast({
         title: 'Success',
         description: 'Part added successfully',
       })
+      
+      // Reset form
       setIsAddingPart(false)
       setSelectedProduct(null)
       setPartQuantity(1)
       setPartUnitPrice(0)
+      setQuickPartName('')
+      setQuickPartCost(0)
+      setAddPartTab('database')
       loadRepair()
     } catch (error) {
       console.error('Error adding part:', error)
@@ -525,8 +559,10 @@ export default function RepairDetail() {
                       <div className="flex items-center gap-3">
                         <Package className="h-5 w-5 text-muted-foreground" />
                         <div>
-                          <p className="font-medium">{part.product?.name}</p>
-                          <p className="text-sm text-muted-foreground">SKU: {part.product?.sku}</p>
+                          <p className="font-medium">{part.product?.name || part.notes || 'Custom Part'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {part.product?.sku ? `SKU: ${part.product.sku}` : 'Manual entry'}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
@@ -840,75 +876,122 @@ export default function RepairDetail() {
             <DialogDescription>Add a part or component to this repair</DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Select Product</Label>
-              <Select 
-                value={selectedProduct?.id} 
-                onValueChange={(value) => {
-                  const product = products.find(p => p.id === value)
-                  setSelectedProduct(product || null)
-                  if (product) {
-                    setPartUnitPrice(product.cost || product.price || 0)
-                  }
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a product" />
-                </SelectTrigger>
-                <SelectContent>
-                  {products.map((product) => (
-                    <SelectItem key={product.id} value={product.id}>
-                      {product.name} - Stock: {product.quantity}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <Tabs value={addPartTab} onValueChange={(v) => setAddPartTab(v as 'database' | 'quick')}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="database">From Database</TabsTrigger>
+              <TabsTrigger value="quick">Quick Add</TabsTrigger>
+            </TabsList>
             
-            {selectedProduct && (
+            <TabsContent value="database" className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Select Product</Label>
+                <Select 
+                  value={selectedProduct?.id} 
+                  onValueChange={(value) => {
+                    const product = products.find(p => p.id === value)
+                    setSelectedProduct(product || null)
+                    if (product) {
+                      setPartUnitPrice(product.costPrice || product.salePrice || 0)
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a product" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {products.map((product) => (
+                      <SelectItem key={product.id} value={product.id}>
+                        {product.name} - Stock: {product.quantity}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {selectedProduct && (
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="font-medium">{selectedProduct.name}</p>
+                  <p className="text-sm text-muted-foreground">SKU: {selectedProduct.sku}</p>
+                  <p className="text-sm text-muted-foreground">Available: {selectedProduct.quantity}</p>
+                </div>
+              )}
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Quantity</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={partQuantity}
+                    onChange={(e) => setPartQuantity(parseInt(e.target.value) || 1)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Unit Price ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={partUnitPrice}
+                    onChange={(e) => setPartUnitPrice(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+              </div>
+              
               <div className="p-3 bg-muted rounded-lg">
-                <p className="font-medium">{selectedProduct.name}</p>
-                <p className="text-sm text-muted-foreground">SKU: {selectedProduct.sku}</p>
-                <p className="text-sm text-muted-foreground">Available: {selectedProduct.quantity}</p>
+                <div className="flex justify-between">
+                  <span>Total:</span>
+                  <span className="font-bold">${(partQuantity * partUnitPrice).toFixed(2)}</span>
+                </div>
               </div>
-            )}
+            </TabsContent>
             
-            <div className="grid grid-cols-2 gap-4">
+            <TabsContent value="quick" className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Quantity</Label>
+                <Label>Part Name</Label>
                 <Input
-                  type="number"
-                  min="1"
-                  value={partQuantity}
-                  onChange={(e) => setPartQuantity(parseInt(e.target.value) || 1)}
+                  placeholder="e.g., Screen Replacement, Battery"
+                  value={quickPartName}
+                  onChange={(e) => setQuickPartName(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Unit Price ($)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={partUnitPrice}
-                  onChange={(e) => setPartUnitPrice(parseFloat(e.target.value) || 0)}
-                />
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Quantity</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={partQuantity}
+                    onChange={(e) => setPartQuantity(parseInt(e.target.value) || 1)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Unit Cost ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={quickPartCost}
+                    onChange={(e) => setQuickPartCost(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
               </div>
-            </div>
-            
-            <div className="p-3 bg-muted rounded-lg">
-              <div className="flex justify-between">
-                <span>Total:</span>
-                <span className="font-bold">${(partQuantity * partUnitPrice).toFixed(2)}</span>
+              
+              <div className="p-3 bg-muted rounded-lg">
+                <div className="flex justify-between">
+                  <span>Total Cost:</span>
+                  <span className="font-bold">${(partQuantity * quickPartCost).toFixed(2)}</span>
+                </div>
               </div>
-            </div>
-          </div>
+            </TabsContent>
+          </Tabs>
           
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddingPart(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddPart} disabled={!selectedProduct}>
+            <Button onClick={handleAddPart} disabled={addPartTab === 'database' ? !selectedProduct : !quickPartName.trim()}>
               Add Part
             </Button>
           </DialogFooter>

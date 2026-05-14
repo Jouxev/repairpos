@@ -47,6 +47,7 @@ export interface RepairPart {
   total: number
   repairId: string
   productId: string
+  notes?: string
   product?: {
     id: string
     name: string
@@ -287,6 +288,85 @@ class RepairService {
     } catch (error) {
       console.error('Error deleting repair:', error)
       throw new Error('Failed to delete repair')
+    }
+  }
+
+  // Add a part to a repair
+  async addPart(repairId: string, data: { productId: string; quantity: number; unitPrice: number; notes?: string }): Promise<void> {
+    try {
+      await electronAPI.db.query({
+        model: 'repairPart',
+        operation: 'create',
+        args: {
+          data: {
+            repairId,
+            productId: data.productId || null,
+            quantity: data.quantity,
+            unitPrice: data.unitPrice,
+            total: data.quantity * data.unitPrice,
+            notes: data.notes || null
+          }
+        }
+      })
+
+      // Update inventory if product exists
+      if (data.productId) {
+        await electronAPI.db.query({
+          model: 'product',
+          operation: 'update',
+          args: {
+            where: { id: data.productId },
+            data: {
+              quantity: { decrement: data.quantity }
+            }
+          }
+        })
+      }
+    } catch (error) {
+      console.error('Error adding part:', error)
+      throw new Error('Failed to add part')
+    }
+  }
+
+  // Remove a part from a repair
+  async removePart(repairId: string, partId: string): Promise<void> {
+    try {
+      // First get the part to restore inventory
+      const partResult = await electronAPI.db.query({
+        model: 'repairPart',
+        operation: 'findUnique',
+        args: {
+          where: { id: partId }
+        }
+      })
+      
+      const part = partResult?.data
+
+      // Delete the part
+      await electronAPI.db.query({
+        model: 'repairPart',
+        operation: 'delete',
+        args: {
+          where: { id: partId }
+        }
+      })
+
+      // Restore inventory if product exists
+      if (part?.productId) {
+        await electronAPI.db.query({
+          model: 'product',
+          operation: 'update',
+          args: {
+            where: { id: part.productId },
+            data: {
+              quantity: { increment: part.quantity }
+            }
+          }
+        })
+      }
+    } catch (error) {
+      console.error('Error removing part:', error)
+      throw new Error('Failed to remove part')
     }
   }
 
