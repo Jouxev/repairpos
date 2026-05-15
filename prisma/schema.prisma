@@ -17,6 +17,8 @@ model User {
   role        String   @default("SELLER")
   isActive    Boolean  @default(true)
   avatar      String?
+  commissionRate Float  @default(50)  // Percentage of profit technician earns (default 50%)
+  balance     Float    @default(0)    // Current balance for technician
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   lastLoginAt DateTime?
@@ -27,8 +29,23 @@ model User {
   repairsAssigned      Repair[]       @relation("AssignedTechnician")
   activities           ActivityLog[]
   notifications        Notification[]
+  earnings             TechnicianEarning[]
 
   @@map("users")
+}
+
+model TechnicianEarning {
+  id          String   @id @default(uuid())
+  amount      Float    // Amount earned (can be positive or negative)
+  type        String   // 'COMMISSION', 'PENALTY', 'ADJUSTMENT'
+  description String?
+  repairId    String?
+  createdAt   DateTime @default(now())
+
+  technicianId String
+  technician   User     @relation(fields: [technicianId], references: [id])
+
+  @@map("technician_earnings")
 }
 
 model ShopSettings {
@@ -90,7 +107,6 @@ model Product {
   supplier        Supplier?    @relation(fields: [supplierId], references: [id])
   
   saleItems       SaleItem[]
-  repairParts     RepairPart[]
   inventoryLogs   InventoryLog[]
   purchaseItems   PurchaseItem[]
 
@@ -168,24 +184,9 @@ model Repair {
   technicianId        String?
   technician          User?          @relation("AssignedTechnician", fields: [technicianId], references: [id])
   
-  parts               RepairPart[]
+  parts               String?   // JSON array of parts
 
   @@map("repairs")
-}
-
-model RepairPart {
-  id        String   @id @default(uuid())
-  quantity  Int
-  unitPrice Float
-  total     Float
-
-  repairId  String
-  repair    Repair   @relation(fields: [repairId], references: [id], onDelete: Cascade)
-  
-  productId String
-  product   Product  @relation(fields: [productId], references: [id])
-
-  @@map("repair_parts")
 }
 
 model CashRegister {

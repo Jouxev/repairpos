@@ -31,7 +31,8 @@ import {
   History,
   FileText,
   Info,
-  AlertTriangle
+  AlertTriangle,
+  Ban
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { repairService, Repair, RepairPart } from '@/services/repairService'
@@ -40,10 +41,13 @@ import { userService, User as UserType } from '@/services/userService'
 import { useAuthStore } from '@/stores/authStore'
 
 // Status workflow
-const statusWorkflow = {
-  'PENDING': ['IN_PROGRESS', 'CANCELLED'],
-  'IN_PROGRESS': ['COMPLETED', 'CANCELLED'],
-  'COMPLETED': ['DELIVERED'],
+const statusWorkflow: Record<string, string[]> = {
+  'PENDING': ['IN_PROGRESS', 'REJECTED', 'CANCELLED'],
+  'IN_PROGRESS': ['COMPLETED_WAITING_PAYMENT', 'REJECTED', 'CANCELLED'],
+  'REJECTED': ['PENDING', 'CANCELLED'],
+  'COMPLETED_WAITING_PAYMENT': ['COMPLETED'],
+  'COMPLETED': ['FINISHED', 'DELIVERED'],
+  'FINISHED': ['DELIVERED'],
   'DELIVERED': [],
   'CANCELLED': []
 }
@@ -79,6 +83,11 @@ export default function RepairDetail() {
   const [partQuantity, setPartQuantity] = useState(1)
   const [partUnitPrice, setPartUnitPrice] = useState(0)
   const [isAddingPart, setIsAddingPart] = useState(false)
+  const [addPartTab, setAddPartTab] = useState<'database' | 'quick'>('database')
+  
+  // Quick add part form
+  const [quickPartName, setQuickPartName] = useState('')
+  const [quickPartCost, setQuickPartCost] = useState(0)
 
   // Technician assignment
   const [technicians, setTechnicians] = useState<UserType[]>([])
@@ -134,7 +143,7 @@ export default function RepairDetail() {
   const loadProducts = async () => {
     try {
       const data = await productService.getProducts()
-      setProducts(Array.isArray(data) ? data : [])
+      setProducts(Array.isArray(data) ? data.data : [])
     } catch (error) {
       console.error('Error loading products:', error)
       setProducts([])
@@ -173,7 +182,8 @@ export default function RepairDetail() {
   }
 
   const handleAddPart = async () => {
-    if (!selectedProduct) {
+    // Database tab: requires product selection
+    if (addPartTab === 'database' && !selectedProduct) {
       toast({
         title: 'Error',
         description: 'Please select a product',
@@ -182,20 +192,47 @@ export default function RepairDetail() {
       return
     }
 
-    try {
-      await repairService.addPart(id!, {
-        productId: selectedProduct.id,
-        quantity: partQuantity,
-        unitPrice: partUnitPrice
+    // Quick tab: requires name
+    if (addPartTab === 'quick' && !quickPartName.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Please enter a part name',
+        variant: 'destructive',
       })
+      return
+    }
+
+    try {
+      if (addPartTab === 'database' && selectedProduct) {
+        // Database product selection
+        await repairService.addPart(id!, {
+          partName: selectedProduct.name,
+          productId: selectedProduct.id,
+          quantity: partQuantity,
+          unitCost: partUnitPrice
+        })
+      } else {
+        // Quick manual entry
+        await repairService.addPart(id!, {
+          partName: quickPartName,
+          quantity: partQuantity,
+          unitCost: quickPartCost
+        })
+      }
+      
       toast({
         title: 'Success',
         description: 'Part added successfully',
       })
+      
+      // Reset form
       setIsAddingPart(false)
       setSelectedProduct(null)
       setPartQuantity(1)
       setPartUnitPrice(0)
+      setQuickPartName('')
+      setQuickPartCost(0)
+      setAddPartTab('database')
       loadRepair()
     } catch (error) {
       console.error('Error adding part:', error)
@@ -267,10 +304,39 @@ export default function RepairDetail() {
     }
 
     try {
+      // Update repair status
       await repairService.updateRepair(id!, {
         status: newStatus as any,
         technicianNotes: statusNote
       })
+
+      // If status is COMPLETED, calculate technician commission
+      if (newStatus === 'COMPLETED' && repair?.technicianId) {
+        try {
+          const commissionResult = await repairService.calculateTechnicianCommission(id!);
+          
+          if (commissionResult.profit > 0) {
+            toast({
+              title: 'Commission Earned!',
+              description: `Technician earned $${commissionResult.technicianCommission.toFixed(2)} from $${commissionResult.profit.toFixed(2)} profit`,
+            });
+          } else if (commissionResult.profit < 0) {
+            toast({
+              title: 'Loss Recorded',
+              description: `Technician share of loss: $${Math.abs(commissionResult.technicianCommission).toFixed(2)}`,
+              variant: 'destructive'
+            });
+          }
+        } catch (commissionError) {
+          console.error('Error calculating commission:', commissionError);
+          toast({
+            title: 'Warning',
+            description: 'Status updated but commission calculation failed',
+            variant: 'destructive'
+          });
+        }
+      }
+
       toast({
         title: 'Success',
         description: `Status updated to ${newStatus}`,
@@ -290,22 +356,24 @@ export default function RepairDetail() {
   }
 
   const calculateProfit = () => {
-    if (!repair) return { partsCost: 0, laborCost: 0, totalCost: 0, profit: 0, profitMargin: 0 }
+    if (!repair) return { partsCost: 0, totalCost: 0, profit: 0, profitMargin: 0 }
     
-    const partsCost = repair.parts?.reduce((sum, part) => sum + (part.unitPrice * part.quantity), 0) || 0
-    const laborCost = repair.repairCost * 0.4 // Estimated 40% labor cost
-    const totalCost = partsCost + laborCost
+    const partsCost = repair.partsCost || repair.parts?.reduce((sum, part) => sum + (part.unitCost * part.quantity), 0) || 0
+    const totalCost = partsCost
     const profit = repair.repairCost - totalCost
     const profitMargin = repair.repairCost > 0 ? (profit / repair.repairCost) * 100 : 0
     
-    return { partsCost, laborCost, totalCost, profit, profitMargin }
+    return { partsCost, totalCost, profit, profitMargin }
   }
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, string> = {
       'PENDING': 'bg-yellow-100 text-yellow-800 border-yellow-200',
       'IN_PROGRESS': 'bg-blue-100 text-blue-800 border-blue-200',
+      'REJECTED': 'bg-orange-100 text-orange-800 border-orange-200',
+      'COMPLETED_WAITING_PAYMENT': 'bg-purple-100 text-purple-800 border-purple-200',
       'COMPLETED': 'bg-green-100 text-green-800 border-green-200',
+      'FINISHED': 'bg-teal-100 text-teal-800 border-teal-200',
       'DELIVERED': 'bg-gray-100 text-gray-800 border-gray-200',
       'CANCELLED': 'bg-red-100 text-red-800 border-red-200',
     }
@@ -389,10 +457,6 @@ export default function RepairDetail() {
               <div>
                 <p className="text-xs text-green-600">Parts Cost</p>
                 <p className="font-semibold text-red-600">-${profit.partsCost.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-green-600">Labor</p>
-                <p className="font-semibold text-red-600">-${profit.laborCost.toFixed(2)}</p>
               </div>
             </div>
           </div>
@@ -526,13 +590,15 @@ export default function RepairDetail() {
                       <div className="flex items-center gap-3">
                         <Package className="h-5 w-5 text-muted-foreground" />
                         <div>
-                          <p className="font-medium">{part.product?.name}</p>
-                          <p className="text-sm text-muted-foreground">SKU: {part.product?.sku}</p>
+                          <p className="font-medium">{part.partName || 'Custom Part'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {part.notes || 'Manual entry'}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="text-right">
-                          <p className="text-sm">{part.quantity} × ${part.unitPrice.toFixed(2)}</p>
+                          <p className="text-sm">{part.quantity} × ${part.unitCost.toFixed(2)}</p>
                           <p className="font-medium">${part.total.toFixed(2)}</p>
                         </div>
                         <Button
@@ -570,10 +636,6 @@ export default function RepairDetail() {
                 <div className="p-4 bg-muted rounded-lg">
                   <p className="text-sm text-muted-foreground">Parts Cost</p>
                   <p className="text-xl font-bold text-red-600">-${profit.partsCost.toFixed(2)}</p>
-                </div>
-                <div className="p-4 bg-muted rounded-lg">
-                  <p className="text-sm text-muted-foreground">Labor Cost</p>
-                  <p className="text-xl font-bold text-red-600">-${profit.laborCost.toFixed(2)}</p>
                 </div>
                 <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                   <p className="text-sm text-green-600 font-medium">Net Profit</p>
@@ -841,75 +903,122 @@ export default function RepairDetail() {
             <DialogDescription>Add a part or component to this repair</DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Select Product</Label>
-              <Select 
-                value={selectedProduct?.id} 
-                onValueChange={(value) => {
-                  const product = products.find(p => p.id === value)
-                  setSelectedProduct(product || null)
-                  if (product) {
-                    setPartUnitPrice(product.cost || product.price || 0)
-                  }
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a product" />
-                </SelectTrigger>
-                <SelectContent>
-                  {products.map((product) => (
-                    <SelectItem key={product.id} value={product.id}>
-                      {product.name} - Stock: {product.quantity}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <Tabs value={addPartTab} onValueChange={(v) => setAddPartTab(v as 'database' | 'quick')}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="database">From Database</TabsTrigger>
+              <TabsTrigger value="quick">Quick Add</TabsTrigger>
+            </TabsList>
             
-            {selectedProduct && (
+            <TabsContent value="database" className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Select Product</Label>
+                <Select 
+                  value={selectedProduct?.id} 
+                  onValueChange={(value) => {
+                    const product = products.find(p => p.id === value)
+                    setSelectedProduct(product || null)
+                    if (product) {
+                      setPartUnitPrice(product.costPrice || product.salePrice || 0)
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a product" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {products.map((product) => (
+                      <SelectItem key={product.id} value={product.id}>
+                        {product.name} - Stock: {product.quantity}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {selectedProduct && (
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="font-medium">{selectedProduct.name}</p>
+                  <p className="text-sm text-muted-foreground">SKU: {selectedProduct.sku}</p>
+                  <p className="text-sm text-muted-foreground">Available: {selectedProduct.quantity}</p>
+                </div>
+              )}
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Quantity</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={partQuantity}
+                    onChange={(e) => setPartQuantity(parseInt(e.target.value) || 1)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Unit Price ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={partUnitPrice}
+                    onChange={(e) => setPartUnitPrice(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+              </div>
+              
               <div className="p-3 bg-muted rounded-lg">
-                <p className="font-medium">{selectedProduct.name}</p>
-                <p className="text-sm text-muted-foreground">SKU: {selectedProduct.sku}</p>
-                <p className="text-sm text-muted-foreground">Available: {selectedProduct.quantity}</p>
+                <div className="flex justify-between">
+                  <span>Total:</span>
+                  <span className="font-bold">${(partQuantity * partUnitPrice).toFixed(2)}</span>
+                </div>
               </div>
-            )}
+            </TabsContent>
             
-            <div className="grid grid-cols-2 gap-4">
+            <TabsContent value="quick" className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Quantity</Label>
+                <Label>Part Name</Label>
                 <Input
-                  type="number"
-                  min="1"
-                  value={partQuantity}
-                  onChange={(e) => setPartQuantity(parseInt(e.target.value) || 1)}
+                  placeholder="e.g., Screen Replacement, Battery"
+                  value={quickPartName}
+                  onChange={(e) => setQuickPartName(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Unit Price ($)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={partUnitPrice}
-                  onChange={(e) => setPartUnitPrice(parseFloat(e.target.value) || 0)}
-                />
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Quantity</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={partQuantity}
+                    onChange={(e) => setPartQuantity(parseInt(e.target.value) || 1)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Unit Cost ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={quickPartCost}
+                    onChange={(e) => setQuickPartCost(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
               </div>
-            </div>
-            
-            <div className="p-3 bg-muted rounded-lg">
-              <div className="flex justify-between">
-                <span>Total:</span>
-                <span className="font-bold">${(partQuantity * partUnitPrice).toFixed(2)}</span>
+              
+              <div className="p-3 bg-muted rounded-lg">
+                <div className="flex justify-between">
+                  <span>Total Cost:</span>
+                  <span className="font-bold">${(partQuantity * quickPartCost).toFixed(2)}</span>
+                </div>
               </div>
-            </div>
-          </div>
+            </TabsContent>
+          </Tabs>
           
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddingPart(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddPart} disabled={!selectedProduct}>
+            <Button onClick={handleAddPart} disabled={addPartTab === 'database' ? !selectedProduct : !quickPartName.trim()}>
               Add Part
             </Button>
           </DialogFooter>

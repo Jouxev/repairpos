@@ -48,6 +48,7 @@ const navItems: NavItem[] = [
   { title: 'Suppliers', href: '/suppliers', icon: Building2, roles: ['ADMIN', 'MANAGER', 'SELLER'] },
   { title: 'Cash Register', href: '/cash-register', icon: DollarSign, roles: ['ADMIN', 'MANAGER', 'CASHIER'] },
   { title: 'Reports', href: '/reports', icon: BarChart3, roles: ['ADMIN', 'MANAGER'] },
+  { title: 'My Profile', href: '/profile', icon: Users, roles: ['TECHNICIAN'] },
   { title: 'Settings', href: '/settings', icon: Settings, roles: ['ADMIN'] },
 ]
 

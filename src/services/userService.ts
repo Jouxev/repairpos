@@ -1,5 +1,20 @@
 export type UserRole = 'ADMIN' | 'MANAGER' | 'TECHNICIAN' | 'SELLER' | 'CASHIER'
 
+export interface User {
+  id: string
+  username: string
+  email: string
+  fullName: string
+  phone?: string
+  role: UserRole
+  isActive: boolean
+  avatar?: string
+  commissionRate: number
+  balance: number
+  createdAt: Date
+  updatedAt: Date
+}
+
 export interface CreateUserData {
   username: string
   email: string
@@ -9,6 +24,7 @@ export interface CreateUserData {
   role: UserRole
   isActive?: boolean
   avatar?: string
+  commissionRate?: number
 }
 
 export interface UpdateUserData {
@@ -20,6 +36,18 @@ export interface UpdateUserData {
   role?: UserRole
   isActive?: boolean
   avatar?: string
+  commissionRate?: number
+  balance?: number
+}
+
+export interface TechnicianEarning {
+  id: string
+  amount: number
+  type: 'COMMISSION' | 'PENALTY' | 'ADJUSTMENT'
+  description?: string
+  repairId?: string
+  createdAt: Date
+  technicianId: string
 }
 
 export interface UserFilters {
@@ -97,6 +125,8 @@ class UserService {
             role: data.role,
             isActive: data.isActive ?? true,
             avatar: data.avatar,
+            commissionRate: data.commissionRate ?? 50,
+            balance: 0
           }
         }
       })
@@ -250,6 +280,82 @@ class UserService {
       return { success: true, user: result.data }
     } catch (error) {
       console.error('Error toggling user status:', error)
+      throw error
+    }
+  }
+
+  // Get technician earnings
+  async getTechnicianEarnings(technicianId: string): Promise<TechnicianEarning[]> {
+    try {
+      const result = await electronAPI.db.query({
+        model: 'technicianEarning',
+        operation: 'findMany',
+        args: {
+          where: { technicianId },
+          orderBy: { createdAt: 'desc' }
+        }
+      })
+
+      if (!result.success) {
+        throw new Error(result.error)
+      }
+
+      return result.data || []
+    } catch (error) {
+      console.error('Error fetching technician earnings:', error)
+      throw error
+    }
+  }
+
+  // Add earning to technician
+  async addTechnicianEarning(
+    technicianId: string,
+    amount: number,
+    type: 'COMMISSION' | 'PENALTY' | 'ADJUSTMENT',
+    description?: string,
+    repairId?: string
+  ) {
+    try {
+      // Create earning record
+      const earningResult = await electronAPI.db.query({
+        model: 'technicianEarning',
+        operation: 'create',
+        args: {
+          data: {
+            technicianId,
+            amount,
+            type,
+            description,
+            repairId
+          }
+        }
+      })
+
+      if (!earningResult.success) {
+        throw new Error(earningResult.error)
+      }
+
+      // Update technician balance
+      const userResult = await electronAPI.db.query({
+        model: 'user',
+        operation: 'update',
+        args: {
+          where: { id: technicianId },
+          data: {
+            balance: {
+              increment: amount
+            }
+          }
+        }
+      })
+
+      if (!userResult.success) {
+        throw new Error(userResult.error)
+      }
+
+      return { success: true, earning: earningResult.data }
+    } catch (error) {
+      console.error('Error adding technician earning:', error)
       throw error
     }
   }

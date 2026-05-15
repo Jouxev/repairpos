@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Search, Wrench, Loader2, User, Phone, Clock, CheckCircle, DollarSign, Info, Calendar } from 'lucide-react'
+import { Plus, Search, Wrench, Loader2, User, Phone, Clock, CheckCircle, DollarSign, Info, Calendar, Ban, XCircle, Package } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
@@ -26,8 +26,18 @@ function RepairJobCard({ repair, onClick }: RepairJobCardProps) {
         return <Clock className="h-4 w-4" />
       case 'IN_PROGRESS':
         return <Loader2 className="h-4 w-4 animate-spin" />
+      case 'REJECTED':
+        return <XCircle className="h-4 w-4" />
+      case 'COMPLETED_WAITING_PAYMENT':
+        return <DollarSign className="h-4 w-4" />
       case 'COMPLETED':
         return <CheckCircle className="h-4 w-4" />
+      case 'FINISHED':
+        return <CheckCircle className="h-4 w-4" />
+      case 'DELIVERED':
+        return <Package className="h-4 w-4" />
+      case 'CANCELLED':
+        return <Ban className="h-4 w-4" />
       default:
         return <Wrench className="h-4 w-4" />
     }
@@ -37,7 +47,10 @@ function RepairJobCard({ repair, onClick }: RepairJobCardProps) {
     const variants: Record<string, string> = {
       'PENDING': 'bg-yellow-100 text-yellow-800 border-yellow-200',
       'IN_PROGRESS': 'bg-blue-100 text-blue-800 border-blue-200',
+      'REJECTED': 'bg-orange-100 text-orange-800 border-orange-200',
+      'COMPLETED_WAITING_PAYMENT': 'bg-purple-100 text-purple-800 border-purple-200',
       'COMPLETED': 'bg-green-100 text-green-800 border-green-200',
+      'FINISHED': 'bg-teal-100 text-teal-800 border-teal-200',
       'DELIVERED': 'bg-gray-100 text-gray-800 border-gray-200',
       'CANCELLED': 'bg-red-100 text-red-800 border-red-200',
     }
@@ -55,7 +68,7 @@ function RepairJobCard({ repair, onClick }: RepairJobCardProps) {
   }
 
   const calculateProfit = () => {
-    const partsCost = repair.parts?.reduce((sum, part) => sum + (part.unitPrice * part.quantity), 0) || 0
+    const partsCost = repair.parts?.reduce((sum, part) => sum + ((part.unitCost || 0) * (part.quantity || 0)), 0) || 0
     const laborCost = repair.repairCost * 0.4
     const totalCost = partsCost + laborCost
     const profit = repair.repairCost - totalCost
