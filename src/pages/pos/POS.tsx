@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,6 +25,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import {
   ShoppingCart,
   Trash2,
@@ -54,13 +60,20 @@ import {
   ArrowLeft,
   Clock,
   Barcode,
+  Scan,
+  Keyboard,
+  Trash,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/authStore'
-import ActivityLogService from '@/services/activityLogService' 
-import  printingService  from '@/services/printingService'
+import { activityLogService } from '@/services/activityLogService'
+import { printReceipt } from '@/services/printHelper'
 import CustomerSearch from '@/components/CustomerSearch'
 import { Client } from '@/services/clientService'
+import { productService } from '@/services/productService'
+import { salesService, CreateSaleInput } from '@/services/salesService'
+import { cashRegisterService } from '@/services/cashRegisterService'
+import { it } from 'node:test'
 
 interface CartItem {
   id: string
@@ -69,8 +82,17 @@ interface CartItem {
   quantity: number
   originalPrice?: number
   discount?: number
-  
   discountType?: 'percentage' | 'fixed'
+  stock?: number
+  sku?: string
+}
+
+interface Cart {
+  id: string
+  name: string
+  items: CartItem[]
+  customer: Client | null
+  createdAt: Date
 }
 
 interface Discount {
@@ -92,53 +114,66 @@ interface PaymentMethod {
   enabled: boolean
 }
 
-interface SavedCart {
+interface Product {
   id: string
   name: string
-  items: CartItem[]
-  createdAt: Date
-}
-
-interface ReturnItem {
-  saleId: string
-  itemId: string
-  name: string
-  originalQuantity: number
-  returnQuantity: number
   price: number
-  reason: string
+  sku: string
+  quantity: number
+  barcode?: string
+  image?: string
 }
 
 export default function POS() {
   const { user } = useAuthStore()
-  const [cart, setCart] = useState<CartItem[]>([])
+  
+  // Multi-cart state
+  const [carts, setCarts] = useState<Cart[]>([
+    { id: '1', name: 'Cart 1', items: [], customer: null, createdAt: new Date() }
+  ])
+  const [activeCartId, setActiveCartId] = useState<string>('1')
+  const [isMultiCartEnabled, setIsMultiCartEnabled] = useState(false)
+  
+  // Search/Scan mode
+  const [searchMode, setSearchMode] = useState<'search' | 'barcode'>('search')
   const [searchQuery, setSearchQuery] = useState('')
+  const [barcodeInput, setBarcodeInput] = useState('')
+  const [barcodeQty, setBarcodeQty] = useState<number>(1)
+  const [products, setProducts] = useState<Product[]>([])
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([])
+  
+  // Refs for keyboard handling
+  const barcodeInputRef = useRef<HTMLInputElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const qtyInputRef = useRef<HTMLInputElement>(null)
+  const barcodeScanTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Other states
   const [activeTab, setActiveTab] = useState('products')
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
   const [isReturnMode, setIsReturnMode] = useState(false)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('cash')
-  const [customerName, setCustomerName] = useState('')
-  const [customerPhone, setCustomerPhone] = useState('')
   const [notes, setNotes] = useState('')
-  const [savedCarts, setSavedCarts] = useState<SavedCart[]>([])
-  const [isSaveCartDialogOpen, setIsSaveCartDialogOpen] = useState(false)
-  const [isLoadCartDialogOpen, setIsLoadCartDialogOpen] = useState(false)
-  const [cartName, setCartName] = useState('')
-  const [returnItems, setReturnItems] = useState<ReturnItem[]>([])
-  const [selectedSaleForReturn, setSelectedSaleForReturn] = useState<string | null>(null)
+  const [shouldPrintReceipt, setShouldPrintReceipt] = useState(true)
+  const [amountReceived, setAmountReceived] = useState<string>('')
+  const [selectedCustomer, setSelectedCustomer] = useState<Client | null>(null)
   
-  // Discount and tax states
+  // Discount states
   const [cartDiscount, setCartDiscount] = useState<Discount | null>(null)
   const [itemDiscounts, setItemDiscounts] = useState<Record<string, Discount>>({})
-  const [taxes, setTaxes] = useState<Tax[]>([
-    { name: 'VAT', rate: 10, enabled: true },
-    { name: 'Service Tax', rate: 5, enabled: false },
-  ])
   const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false)
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage')
   const [discountValue, setDiscountValue] = useState('')
   const [discountReason, setDiscountReason] = useState('')
   const [discountTarget, setDiscountTarget] = useState<'cart' | string>('cart')
+  
+  const [taxes, setTaxes] = useState<Tax[]>([
+    { name: 'VAT', rate: 10, enabled: false },
+    { name: 'Service Tax', rate: 5, enabled: false },
+  ])
+
+  // View mode state for products (grid/list)
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
   const paymentMethods: PaymentMethod[] = [
     { id: 'cash', name: 'Cash', icon: <Banknote className="h-5 w-5" />, enabled: true },
@@ -147,50 +182,167 @@ export default function POS() {
     { id: 'qr', name: 'QR Code', icon: <QrCode className="h-5 w-5" />, enabled: true },
   ]
 
-  // Load saved carts from localStorage
+  const quickAmounts = [10, 20, 50, 100, 200, 500]
+
+  // Load products from database
   useEffect(() => {
-    const saved = localStorage.getItem('pos_saved_carts')
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        setSavedCarts(parsed.map((c: any) => ({
-          ...c,
-          createdAt: new Date(c.createdAt)
-        })))
-      } catch (e) {
-        console.error('Failed to load saved carts:', e)
-      }
-    }
+    loadProducts()
   }, [])
 
-  // Save carts to localStorage
-  useEffect(() => {
-    localStorage.setItem('pos_saved_carts', JSON.stringify(savedCarts))
-  }, [savedCarts])
+  const loadProducts = async () => {
+    try {
+      const result = await productService.getProducts()
+      // Handle both array response and object with data property
+      const data = Array.isArray(result) ? result : result?.data || []
+      setProducts(data.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        price: p.salePrice || 0,
+        sku: p.sku || '',
+        quantity: p.quantity || 0,
+        barcode: p.barcode,
+        image: p.image
+      })))
+    } catch (error) {
+      console.error('Failed to load products:', error)
+      toast.error('Failed to load products')
+    }
+  }
 
-  const addToCart = (product: { id: string; name: string; price: number }) => {
+  // Filter products based on search
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      const filtered = products.filter(p =>
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.sku.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+      setFilteredProducts(filtered)
+    } else {
+      setFilteredProducts(products)
+    }
+  }, [searchQuery, products])
+
+  // Helper function to get image URL
+  const getProductImageUrl = (imagePath: string | null | undefined): string | null => {
+    if (!imagePath) return null
+    if (imagePath.startsWith('data:')) return imagePath
+    if (imagePath.startsWith('http')) return imagePath
+    if (imagePath.startsWith('/media/')) {
+      return `${window.location.origin}${imagePath}`
+    }
+    return `${window.location.origin}/media/products/${imagePath}`
+  }
+
+  // Keyboard event handling
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // F2 - Toggle between search and barcode
+      if (e.key === 'F2') {
+        e.preventDefault()
+        setSearchMode(prev => prev === 'search' ? 'barcode' : 'search')
+        toast.info(`Switched to ${searchMode === 'search' ? 'barcode' : 'search'} mode`)
+      }
+
+      // Number keys 0-9 for quantity when in barcode mode
+      if (searchMode === 'barcode' && /^[0-9]$/.test(e.key) && document.activeElement !== barcodeInputRef.current) {
+        e.preventDefault()
+        setBarcodeQty(prev => {
+          const newQty = parseInt(prev.toString() + e.key)
+          return newQty > 999 ? 999 : newQty
+        })
+      }
+
+      // + and - keys for quantity
+      if (searchMode === 'barcode' && (e.key === '+' || e.key === '-')) {
+        e.preventDefault()
+        setBarcodeQty(prev => {
+          if (e.key === '+') return prev < 999 ? prev + 1 : 999
+          return prev > 1 ? prev - 1 : 1
+        })
+      }
+
+      // Enter key handling
+      if (e.key === 'Enter') {
+        if (searchMode === 'barcode' && barcodeInputRef.current === document.activeElement) {
+          e.preventDefault()
+          handleBarcodeScan()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [searchMode, barcodeInput, barcodeQty])
+
+  // Focus management
+  useEffect(() => {
+    if (searchMode === 'barcode' && barcodeInputRef.current) {
+      barcodeInputRef.current.focus()
+    } else if (searchMode === 'search' && searchInputRef.current) {
+      searchInputRef.current.focus()
+    }
+  }, [searchMode])
+
+  // Get active cart
+  const activeCart = carts.find(c => c.id === activeCartId) || carts[0]
+
+  // Cart operations
+  const addToCart = (product: Product, quantity: number = 1) => {
     if (isReturnMode) {
       toast.error('Cannot add items in return mode')
       return
     }
 
-    setCart((prev) => {
-      const existing = prev.find((item) => item.id === product.id)
+    // Check stock
+    if (product.quantity < quantity) {
+      toast.error(`Insufficient stock. Only ${product.quantity} available.`)
+      return
+    }
+
+    setCarts(prev => prev.map(cart => {
+      if (cart.id !== activeCartId) return cart
+      
+      const existing = cart.items.find((item) => item.id === product.id)
       if (existing) {
-        return prev.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        )
+        const newQuantity = existing.quantity + quantity
+        if (newQuantity > product.quantity) {
+          toast.error(`Cannot add more. Stock limit: ${product.quantity}`)
+          return cart
+        }
+        return {
+          ...cart,
+          items: cart.items.map((item) =>
+            item.id === product.id
+              ? { ...item, quantity: newQuantity }
+              : item
+          )
+        }
       }
-      return [...prev, { ...product, quantity: 1 }]
-    })
-    toast.success(`${product.name} added to cart`)
+      return {
+        ...cart,
+        items: [...cart.items, { 
+          id: product.id, 
+          name: product.name, 
+          price: product.price, 
+          quantity,
+          stock: product.quantity,
+          sku: product.sku
+        }]
+      }
+    }))
+    
+    toast.success(`${product.name} (${quantity}x) added to cart`)
   }
 
   const removeFromCart = (id: string) => {
-    setCart((prev) => prev.filter((item) => item.id !== id))
-    // Remove any item discount
+    setCarts(prev => prev.map(cart => {
+      if (cart.id !== activeCartId) return cart
+      return {
+        ...cart,
+        items: cart.items.filter((item) => item.id !== id)
+      }
+    }))
+    
     setItemDiscounts((prev) => {
       const newDiscounts = { ...prev }
       delete newDiscounts[id]
@@ -199,60 +351,172 @@ export default function POS() {
   }
 
   const updateQuantity = (id: string, delta: number) => {
-    setCart((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          const newQuantity = Math.max(1, item.quantity + delta)
-          return { ...item, quantity: newQuantity }
-        }
-        return item
-      })
-    )
+    setCarts(prev => prev.map(cart => {
+      if (cart.id !== activeCartId) return cart
+      return {
+        ...cart,
+        items: cart.items.map((item) => {
+          if (item.id === id) {
+            const newQuantity = Math.max(1, item.quantity + delta)
+            if (item.stock && newQuantity > item.stock) {
+              toast.error(`Cannot exceed stock of ${item.stock}`)
+              return item
+            }
+            return { ...item, quantity: newQuantity }
+          }
+          return item
+        })
+      }
+    }))
   }
 
+  const setItemQuantity = (id: string, quantity: number) => {
+    if (quantity < 1) return
+    setCarts(prev => prev.map(cart => {
+      if (cart.id !== activeCartId) return cart
+      return {
+        ...cart,
+        items: cart.items.map((item) => {
+          if (item.id === id) {
+            if (item.stock && quantity > item.stock) {
+              toast.error(`Cannot exceed stock of ${item.stock}`)
+              return item
+            }
+            return { ...item, quantity }
+          }
+          return item
+        })
+      }
+    }))
+  }
+
+  // Barcode scanning
+  const handleBarcodeScan = async (scanValue?: string) => {
+    const barcode = scanValue || barcodeInput
+    
+    if (!barcode.trim()) {
+      toast.error('Please enter a barcode')
+      return
+    }
+
+    try {
+      // Search for product by barcode
+      const product = products.find(p => 
+        p.barcode === barcode.trim() || 
+        p.sku === barcode.trim() ||
+        p.id === barcode.trim()
+      )
+
+      if (!product) {
+        console.log('Product not found for barcode:', barcode)
+        toast.error(`Item not found for barcode: ${barcode}`, {
+          icon: <AlertTriangle className="h-4 w-4" />,
+          duration: 5000,
+          important: true
+        })
+        // Reset input after not found
+        setBarcodeInput('')
+        setBarcodeQty(1)
+        if (barcodeInputRef.current) {
+          barcodeInputRef.current.focus()
+        }
+        return
+      }
+
+      // Check stock availability before adding
+      if (product.quantity < barcodeQty) {
+        console.log('Insufficient stock:', { product: product.name, available: product.quantity, requested: barcodeQty })
+        toast.error(
+          <div className="flex flex-col gap-1">
+            <span className="font-semibold">Insufficient Stock</span>
+            <span>"{product.name}"</span>
+            <span className="text-sm text-muted-foreground">
+              Available: {product.quantity} | Requested: {barcodeQty}
+            </span>
+          </div>,
+          {
+            icon: <AlertTriangle className="h-5 w-5 text-destructive" />,
+            duration: 5000,
+            important: true
+          }
+        )
+        return
+      }
+
+      // Add to cart with specified quantity
+      addToCart(product, barcodeQty)
+      
+      // Reset inputs
+      setBarcodeInput('')
+      setBarcodeQty(1)
+      
+      // Refocus barcode input
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.focus()
+      }
+    } catch (error) {
+      console.error('Barcode scan error:', error)
+      toast.error('Error processing barcode')
+    }
+  }
+
+  // Multi-cart operations
+  const createNewCart = () => {
+    const newCartId = Date.now().toString()
+    const cartNumber = carts.length + 1
+    setCarts(prev => [...prev, {
+      id: newCartId,
+      name: `Cart ${cartNumber}`,
+      items: [],
+      customer: null,
+      createdAt: new Date()
+    }])
+    setActiveCartId(newCartId)
+    toast.success(`Created Cart ${cartNumber}`)
+  }
+
+  const closeCart = (cartId: string) => {
+    if (carts.length <= 1) {
+      toast.error('Cannot close the only cart')
+      return
+    }
+    
+    const cartToClose = carts.find(c => c.id === cartId)
+    if (cartToClose && cartToClose.items.length > 0) {
+      const confirm = window.confirm(`Cart "${cartToClose.name}" has items. Are you sure you want to close it?`)
+      if (!confirm) return
+    }
+    
+    setCarts(prev => prev.filter(c => c.id !== cartId))
+    if (activeCartId === cartId) {
+      const remainingCarts = carts.filter(c => c.id !== cartId)
+      setActiveCartId(remainingCarts[0]?.id || '')
+    }
+    toast.info('Cart closed')
+  }
+
+  const renameCart = (cartId: string, newName: string) => {
+    setCarts(prev => prev.map(c => 
+      c.id === cartId ? { ...c, name: newName } : c
+    ))
+  }
+
+  // Existing functions
   const clearCart = () => {
-    setCart([])
+    setCarts(prev => prev.map(cart => 
+      cart.id === activeCartId 
+        ? { ...cart, items: [], customer: null }
+        : cart
+    ))
     setCartDiscount(null)
     setItemDiscounts({})
     setSelectedCustomer(null)
-    setCustomerName('')
-    setCustomerPhone('')
-    setNotes('')
     toast.info('Cart cleared')
   }
 
-  const saveCart = () => {
-    if (cart.length === 0) {
-      toast.error('Cannot save empty cart')
-      return
-    }
-    if (!cartName.trim()) {
-      toast.error('Please enter a cart name')
-      return
-    }
-
-    const newCart: SavedCart = {
-      id: Date.now().toString(),
-      name: cartName,
-      items: [...cart],
-      createdAt: new Date(),
-    }
-
-    setSavedCarts((prev) => [...prev, newCart])
-    setCartName('')
-    setIsSaveCartDialogOpen(false)
-    toast.success('Cart saved successfully')
-  }
-
-  const loadCart = (savedCart: SavedCart) => {
-    setCart(savedCart.items)
-    setIsLoadCartDialogOpen(false)
-    toast.success(`Cart "${savedCart.name}" loaded`)
-  }
-
-  const deleteSavedCart = (id: string) => {
-    setSavedCarts((prev) => prev.filter((c) => c.id !== id))
-    toast.info('Saved cart deleted')
+  const openDiscountDialog = (target: 'cart' | string) => {
+    setDiscountTarget(target)
+    setIsDiscountDialogOpen(true)
   }
 
   const applyDiscount = () => {
@@ -280,24 +544,27 @@ export default function POS() {
         ...prev,
         [discountTarget]: discount,
       }))
-      // Update item to show discount
-      setCart((prev) =>
-        prev.map((item) => {
-          if (item.id === discountTarget) {
-            const itemDiscount = discount.type === 'percentage'
-              ? item.price * (discount.value / 100)
-              : discount.value
-            return {
-              ...item,
-              originalPrice: item.price,
-              price: item.price - itemDiscount,
-              discount: itemDiscount,
-              discountType: discount.type,
+      setCarts(prev => prev.map(cart => {
+        if (cart.id !== activeCartId) return cart
+        return {
+          ...cart,
+          items: cart.items.map((item) => {
+            if (item.id === discountTarget) {
+              const itemDiscount = discount.type === 'percentage'
+                ? item.price * (discount.value / 100)
+                : discount.value
+              return {
+                ...item,
+                originalPrice: item.price,
+                price: item.price - itemDiscount,
+                discount: itemDiscount,
+                discountType: discount.type,
+              }
             }
-          }
-          return item
-        })
-      )
+            return item
+          })
+        }
+      }))
     }
 
     setIsDiscountDialogOpen(false)
@@ -315,49 +582,51 @@ export default function POS() {
         delete newDiscounts[target]
         return newDiscounts
       })
-      // Restore original price
-      setCart((prev) =>
-        prev.map((item) => {
-          if (item.id === target && item.originalPrice) {
-            return {
-              ...item,
-              price: item.originalPrice,
-              originalPrice: undefined,
-              discount: undefined,
-              discountType: undefined,
+      setCarts(prev => prev.map(cart => {
+        if (cart.id !== activeCartId) return cart
+        return {
+          ...cart,
+          items: cart.items.map((item) => {
+            if (item.id === target && item.originalPrice) {
+              return {
+                ...item,
+                price: item.originalPrice,
+                originalPrice: undefined,
+                discount: undefined,
+                discountType: undefined,
+              }
             }
-          }
-          return item
-        })
-      )
+            return item
+          })
+        }
+      }))
     }
     toast.info('Discount removed')
   }
 
   const calculateTotals = () => {
-    let subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
+    const cart = activeCart
+    const subtotal = cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
     
-    // Calculate cart-level discount
     let cartDiscountAmount = 0
     if (cartDiscount) {
       cartDiscountAmount = cartDiscount.type === 'percentage'
         ? subtotal * (cartDiscount.value / 100)
         : cartDiscount.value
-      subtotal -= cartDiscountAmount
     }
 
-    // Calculate taxes
+    const taxableAmount = subtotal - cartDiscountAmount
     const enabledTaxes = taxes.filter((t) => t.enabled)
     const taxAmount = enabledTaxes.reduce((sum, tax) => {
-      return sum + (subtotal * tax.rate) / 100
+      return sum + (taxableAmount * tax.rate) / 100
     }, 0)
 
-    const total = subtotal + taxAmount
+    const total = taxableAmount + taxAmount
 
     return {
-      subtotal: cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
+      subtotal: cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0),
       cartDiscountAmount,
-      taxableAmount: subtotal,
+      taxableAmount,
       taxAmount,
       taxes: enabledTaxes,
       total,
@@ -365,7 +634,8 @@ export default function POS() {
   }
 
   const handleCheckout = async () => {
-    if (cart.length === 0) {
+    const cart = activeCart
+    if (cart.items.length === 0) {
       toast.error('Cart is empty')
       return
     }
@@ -373,104 +643,191 @@ export default function POS() {
     const totals = calculateTotals()
 
     try {
-      // Log the sale activity
-      await ActivityLogService.logActivity('CREATE', 'SALE', {
-        description: `Created sale #${Date.now()} for $${totals.total.toFixed(2)}`,
+      // Check if cash register is open
+      const openRegister = await cashRegisterService.getOpenRegister()
+      if (!openRegister) {
+        toast.error('No cash register is open. Please open a register first.')
+        setIsCheckoutOpen(false)
+        return
+      }
+
+      // Create sale in database
+      const saleData: CreateSaleInput = {
+        customerId: selectedCustomer?.id,
+        customerName: selectedCustomer?.fullName || 'Walk-in Customer',
+        customerPhone: selectedCustomer?.phone,
+        status: 'CONFIRMED',
+        items: cart.items.map(item => ({
+          productId: item.id,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          discount: item.discount || 0,
+          tax: 0,
+        })),
+        discountAmount: totals.cartDiscountAmount,
+        taxAmount: totals.taxAmount,
+        total: totals.total,
+        paidAmount: totals.total,
+        notes: notes || undefined,
+        saleDate: new Date(),
+        sellerId: user?.id || 'system',
+        cashRegisterId: openRegister.id,
+      }
+
+      const createdSale = await salesService.createSale(saleData)
+
+      if (!createdSale) {
+        throw new Error('Failed to create sale')
+      }
+
+      // Record sale in cash register
+      await cashRegisterService.recordSale(openRegister.id, totals.total)
+
+      // Log activity
+      await activityLogService.logActivity('CREATE', 'SALE', {
+        description: `Created sale #${createdSale.invoiceNumber} for $${totals.total.toFixed(2)}`,
         entityType: 'sale',
+        entityId: createdSale.id,
         newValue: {
           total: totals.total,
-          items: cart.length,
+          items: cart.items.length,
           paymentMethod: selectedPaymentMethod,
           customerId: selectedCustomer?.id,
           customerName: selectedCustomer?.fullName,
         },
       })
 
-      // Print receipt if requested
-      if (printReceipt) {
-        await printingService.printThermalReceipt({
-          shopName: 'RepairPro Shop',
-          shopAddress: '123 Repair Street',
-          shopPhone: '+1 234 567 890',
-          receiptNumber: `R${Date.now()}`,
-          date: new Date().toLocaleString(),
-          customerName: customerName || 'Walk-in Customer',
-          items: cart.map((item) => ({
-            name: item.name,
-            quantity: item.quantity,
-            price: item.price,
-          })),
-          subtotal: totals.subtotal,
-          tax: totals.taxAmount,
-          discount: totals.cartDiscountAmount,
-          total: totals.total,
-          paymentMethod:
-            selectedPaymentMethod === 'cash'
-              ? 'Cash'
-              : selectedPaymentMethod === 'card'
-              ? 'Credit Card'
-              : 'Mobile Payment',
-          footer: 'Thank you for your business!',
-        })
+      if (shouldPrintReceipt) {
+        try {
+          await printReceipt({
+            shopName: 'RepairPro Shop',
+            shopAddress: '123 Repair Street',
+            shopPhone: '+1 234 567 890',
+            receiptNumber: `R${Date.now()}`,
+            date: new Date().toLocaleString(),
+            customerName: selectedCustomer?.fullName || 'Walk-in Customer',
+            items: cart.items.map((item) => ({
+              name: item.name,
+              quantity: item.quantity,
+              price: item.price,
+            })),
+            subtotal: totals.subtotal,
+            tax: totals.taxAmount,
+            discount: totals.cartDiscountAmount,
+            total: totals.total,
+            paymentMethod:
+              selectedPaymentMethod === 'cash'
+                ? 'Cash'
+                : selectedPaymentMethod === 'card'
+                ? 'Credit Card'
+                : 'Mobile Payment',
+            footer: 'Thank you for your business!',
+          })
+        } catch (error) {
+          console.error('Error printing receipt:', error)
+          toast.error('Failed to print receipt')
+        }
       }
 
       toast.success('Sale completed successfully!')
 
+      // Update stock for sold items
+      for (const item of cart.items) {
+        try {
+          await productService.adjustQuantity(item.id, -item.quantity)
+        } catch (error) {
+          console.error(`Failed to update stock for ${item.name}:`, error)
+        }
+      }
+
       // Clear cart after successful sale
-      clearCart()
+      setCarts(prev => prev.map(c => 
+        c.id === activeCartId 
+          ? { ...c, items: [], customer: null }
+          : c
+      ))
       setIsCheckoutOpen(false)
-      setCustomerName('')
-      setCustomerPhone('')
-      setNotes('')
+      setCartDiscount(null)
+      setItemDiscounts({})
+      setSelectedCustomer(null)
+      
+      // Refresh products to get updated stock
+      loadProducts()
     } catch (error) {
       console.error('Checkout error:', error)
       toast.error('Failed to complete sale')
     }
   }
 
-  const [printReceipt, setPrintReceipt] = useState(true)
-  const [quickAmount, setQuickAmount] = useState<string>('')
-  const [amountReceived, setAmountReceived] = useState<string>('')
-  const [selectedCustomer, setSelectedCustomer] = useState<Client | null>(null)
-
   const totals = calculateTotals()
   const changeDue = parseFloat(amountReceived || '0') - totals.total
 
-  const quickAmounts = [10, 20, 50, 100, 200, 500]
-
-  const openDiscountDialog = (target: 'cart' | string) => {
-    setDiscountTarget(target)
-    setIsDiscountDialogOpen(true)
-  }
-
-  // Mock products for demo
-  const mockProducts = [
-    { id: '1', name: 'iPhone Screen Protector', price: 15.99, sku: 'SCR-001', stock: 50 },
-    { id: '2', name: 'Samsung Battery', price: 45.0, sku: 'BAT-001', stock: 25 },
-    { id: '3', name: 'iPhone Charging Cable', price: 12.99, sku: 'CAB-001', stock: 100 },
-    { id: '4', name: 'Screen Repair Kit', price: 89.99, sku: 'KIT-001', stock: 15 },
-    { id: '5', name: 'Phone Case', price: 24.99, sku: 'CAS-001', stock: 75 },
-    { id: '6', name: 'Earphones', price: 29.99, sku: 'EAR-001', stock: 40 },
-    { id: '7', name: 'USB-C Adapter', price: 19.99, sku: 'ADA-001', stock: 60 },
-    { id: '8', name: 'Wireless Charger', price: 34.99, sku: 'WCH-001', stock: 30 },
-  ]
-
-  const filteredProducts = mockProducts.filter((product) =>
-    product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    product.sku.toLowerCase().includes(searchQuery.toLowerCase())
-  )
-
   return (
     <div className="h-[calc(100vh-8rem)]">
+      {/* Cart Tabs */}
+      {isMultiCartEnabled && (
+        <div className="mb-2 flex items-center gap-2">
+          <div className="flex gap-1">
+            {carts.map(cart => (
+              <Button
+                key={cart.id}
+                variant={activeCartId === cart.id ? 'default' : 'outline'}
+                size="sm"
+                className="relative"
+                onClick={() => setActiveCartId(cart.id)}
+              >
+                {cart.name}
+                {cart.items.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 text-xs">
+                    {cart.items.length}
+                  </Badge>
+                )}
+                {carts.length > 1 && (
+                  <button
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-destructive rounded-full text-white text-xs flex items-center justify-center"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      closeCart(cart.id)
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </Button>
+            ))}
+          </div>
+          <Button variant="outline" size="sm" onClick={createNewCart}>
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
       <div className="flex h-full gap-4">
         {/* Products Section */}
         <div className="flex-1 flex flex-col">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold">Point of Sale</h1>
-              <p className="text-muted-foreground">Select products to add to cart</p>
+              <p className="text-muted-foreground">Select products or scan barcode</p>
             </div>
             <div className="flex items-center gap-2">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={isMultiCartEnabled ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setIsMultiCartEnabled(!isMultiCartEnabled)}
+                    >
+                      <ShoppingCart className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Multi-cart mode</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              
               <Button
                 variant={isReturnMode ? 'default' : 'outline'}
                 onClick={() => setIsReturnMode(!isReturnMode)}
@@ -482,6 +839,97 @@ export default function POS() {
             </div>
           </div>
 
+          {/* Search/Barcode Toggle */}
+          <div className="mb-4 flex items-center gap-2">
+            <Button
+              variant={searchMode === 'search' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSearchMode('search')}
+              className="gap-2"
+            >
+              <Search className="h-4 w-4" />
+              Search
+            </Button>
+            <Button
+              variant={searchMode === 'barcode' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSearchMode('barcode')}
+              className="gap-2"
+            >
+              <Barcode className="h-4 w-4" />
+              Scan Barcode
+            </Button>
+            <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+              <Keyboard className="h-4 w-4" />
+              <span>Press F2 to switch</span>
+            </div>
+          </div>
+
+          {/* Search/Barcode Input Area */}
+          {searchMode === 'search' ? (
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                ref={searchInputRef}
+                placeholder="Search by name or SKU..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          ) : (
+            <div className="flex gap-2 mb-4">
+              <div className="flex-1 relative">
+                <Barcode className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  ref={barcodeInputRef}
+                  placeholder="Scan or type barcode..."
+                  value={barcodeInput}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    setBarcodeInput(value)
+                    
+                    // Clear any existing timeout
+                    if (barcodeScanTimeoutRef.current) {
+                      clearTimeout(barcodeScanTimeoutRef.current)
+                    }
+                    
+                    // Auto-scan after user stops typing for 500ms
+                    // This allows barcode scanners to send all characters before scanning
+                    if (value.length >= 3) {
+                      barcodeScanTimeoutRef.current = setTimeout(() => {
+                        handleBarcodeScan(value)
+                      }, 500)
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleBarcodeScan(barcodeInput)
+                    }
+                  }}
+                  className="pl-10"
+                  autoFocus
+                />
+              </div>
+              <div className="w-24">
+                <Input
+                  ref={qtyInputRef}
+                  type="number"
+                  min={1}
+                  max={999}
+                  value={barcodeQty}
+                  onChange={(e) => setBarcodeQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="text-center"
+                  placeholder="Qty"
+                />
+              </div>
+              <Button onClick={handleBarcodeScan}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+
+          {/* Products Grid */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="products" className="gap-2">
@@ -495,42 +943,130 @@ export default function POS() {
             </TabsList>
 
             <TabsContent value="products" className="flex-1 flex flex-col mt-4">
-              <div className="relative mb-4">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search by name or SKU..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
+              {/* View Mode Toggle */}
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm text-muted-foreground">
+                  {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''}
+                </p>
+                <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+                  <Button
+                    variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 px-2"
+                    onClick={() => setViewMode('grid')}
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                    </svg>
+                  </Button>
+                  <Button
+                    variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-7 px-2"
+                    onClick={() => setViewMode('list')}
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                  </Button>
+                </div>
               </div>
 
               <ScrollArea className="flex-1">
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
-                  {filteredProducts.map((product) => (
-                    <Card
-                      key={product.id}
-                      className="cursor-pointer hover:bg-accent transition-colors group"
-                      onClick={() => addToCart(product)}
-                    >
-                      <CardContent className="p-4">
-                        <div className="aspect-square rounded-lg bg-muted mb-3 flex items-center justify-center group-hover:bg-muted/80">
-                          <Package className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                        <h3 className="font-medium truncate">{product.name}</h3>
-                        <p className="text-xs text-muted-foreground">{product.sku}</p>
-                        <div className="flex items-center justify-between mt-2">
-                          <p className="text-lg font-bold text-primary">
-                            ${product.price.toFixed(2)}
-                          </p>
-                          <Badge variant={product.stock > 10 ? 'default' : 'destructive'} className="text-xs">
-                            {product.stock} in stock
-                          </Badge>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                {viewMode === 'grid' ? (
+                  /* Grid View */
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
+                    {filteredProducts.map((product) => (
+                      <Card
+                        key={product.id}
+                        className="cursor-pointer hover:bg-accent transition-colors group"
+                        onClick={() => addToCart(product, 1)}
+                      >
+                        <CardContent className="p-4">
+                          <div className="aspect-square rounded-lg bg-muted mb-3 flex items-center justify-center group-hover:bg-muted/80 overflow-hidden">
+                            {product.image ? (
+                              <img
+                                src={getProductImageUrl(product.image) || ''}
+                                alt={product.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none'
+                                }}
+                              />
+                            ) : (
+                              <Package className="h-8 w-8 text-muted-foreground" />
+                            )}
+                          </div>
+                          <h3 className="font-medium truncate">{product.name}</h3>
+                          <p className="text-xs text-muted-foreground">{product.sku}</p>
+                          <div className="flex items-center justify-between mt-2">
+                            <p className="text-lg font-bold text-primary">
+                              ${product.price.toFixed(2)}
+                            </p>
+                            <Badge 
+                              variant={product.quantity > 10 ? 'default' : product.quantity > 0 ? 'secondary' : 'destructive'} 
+                              className="text-xs"
+                            >
+                              {product.quantity} in stock
+                            </Badge>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  /* List View */
+                  <div className="space-y-2 pb-4">
+                    {filteredProducts.map((product) => (
+                      <Card
+                        key={product.id}
+                        className="cursor-pointer hover:bg-accent transition-colors"
+                        onClick={() => addToCart(product, 1)}
+                      >
+                        <CardContent className="p-3">
+                          <div className="flex items-center gap-3">
+                            {/* Product Image */}
+                            <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
+                              {product.image ? (
+                                <img
+                                  src={getProductImageUrl(product.image) || ''}
+                                  alt={product.name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none'
+                                  }}
+                                />
+                              ) : (
+                                <Package className="h-6 w-6 text-muted-foreground" />
+                              )}
+                            </div>
+                            
+                            {/* Product Info */}
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-medium truncate">{product.name}</h3>
+                              <p className="text-xs text-muted-foreground">{product.sku}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <Badge 
+                                  variant={product.quantity > 10 ? 'default' : product.quantity > 0 ? 'secondary' : 'destructive'} 
+                                  className="text-xs"
+                                >
+                                  {product.quantity} in stock
+                                </Badge>
+                              </div>
+                            </div>
+                            
+                            {/* Price */}
+                            <div className="text-right">
+                              <p className="text-lg font-bold text-primary">
+                                ${product.price.toFixed(2)}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </ScrollArea>
             </TabsContent>
 
@@ -542,7 +1078,14 @@ export default function POS() {
                     variant="outline"
                     className="h-24 text-2xl font-bold"
                     onClick={() => {
-                      addToCart({ id: `quick-${amount}`, name: `Quick Sale $${amount}`, price: amount })
+                      const quickItem: Product = {
+                        id: `quick-${amount}-${Date.now()}`,
+                        name: `Quick Sale $${amount}`,
+                        price: amount,
+                        sku: `QUICK-${amount}`,
+                        quantity: 999
+                      }
+                      addToCart(quickItem, 1)
                     }}
                   >
                     ${amount}
@@ -559,10 +1102,10 @@ export default function POS() {
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <ShoppingCart className="h-5 w-5" />
-                {isReturnMode ? 'Return Items' : 'Current Sale'}
+                {isReturnMode ? 'Return Items' : activeCart.name}
               </CardTitle>
               <div className="flex items-center gap-1">
-                {cart.length > 0 && (
+                {activeCart.items.length > 0 && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -572,30 +1115,6 @@ export default function POS() {
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>Cart Options</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setIsSaveCartDialogOpen(true)}>
-                      <Save className="h-4 w-4 mr-2" />
-                      Save Cart
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setIsLoadCartDialogOpen(true)}>
-                      <History className="h-4 w-4 mr-2" />
-                      Load Cart
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setIsReturnMode(!isReturnMode)}>
-                      <RotateCcw className="h-4 w-4 mr-2" />
-                      {isReturnMode ? 'Exit Return Mode' : 'Process Return'}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
             </div>
           </CardHeader>
@@ -632,29 +1151,23 @@ export default function POS() {
                   </CustomerSearch>
                 </div>
               )}
-              
-              {/* Additional notes field */}
-              <div className="pt-2 border-t">
-                <Input
-                  placeholder="Add notes (optional)"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="h-8 text-sm"
-                />
-              </div>
             </div>
 
             {/* Cart Items */}
             <ScrollArea className="flex-1 px-4 py-2">
-              {cart.length === 0 ? (
+              {activeCart.items.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-muted-foreground py-8">
                   <ShoppingCart className="h-12 w-12 mb-3 opacity-50" />
                   <p className="text-sm">Your cart is empty</p>
-                  <p className="text-xs">Select products to add them</p>
+                  <p className="text-xs">
+                    {searchMode === 'barcode' 
+                      ? 'Scan a barcode or press F2 to search' 
+                      : 'Search for products or press F2 to scan'}
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {cart.map((item) => (
+                  {activeCart.items.map((item) => (
                     <div
                       key={item.id}
                       className="flex items-center gap-2 p-2 rounded-lg border bg-card"
@@ -681,9 +1194,13 @@ export default function POS() {
                         >
                           <Minus className="h-3 w-3" />
                         </Button>
-                        <span className="w-6 text-center text-sm font-medium">
-                          {item.quantity}
-                        </span>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={item.quantity}
+                          onChange={(e) => setItemQuantity(item.id, parseInt(e.target.value) || 1)}
+                          className="w-12 h-6 text-center text-sm p-0"
+                        />
                         <Button
                           variant="outline"
                           size="icon"
@@ -718,7 +1235,7 @@ export default function POS() {
             </ScrollArea>
 
             {/* Totals Section */}
-            {cart.length > 0 && (
+            {activeCart.items.length > 0 && (
               <div className="border-t p-4 space-y-3">
                 {/* Discount Button */}
                 <div className="flex items-center justify-between">
@@ -760,34 +1277,6 @@ export default function POS() {
                     </div>
                   </div>
                 )}
-
-                {Object.entries(itemDiscounts).map(([itemId, discount]) => {
-                  const item = cart.find((i) => i.id === itemId)
-                  if (!item) return null
-                  return (
-                    <div key={itemId} className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground truncate max-w-[150px]">
-                        {item.name} discount
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-green-600">
-                          -
-                          {discount.type === 'percentage'
-                            ? `${discount.value}%`
-                            : `$${discount.value.toFixed(2)}`}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5"
-                          onClick={() => removeDiscount(itemId)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  )
-                })}
 
                 <Separator />
 
@@ -908,91 +1397,6 @@ export default function POS() {
         </DialogContent>
       </Dialog>
 
-      {/* Save Cart Dialog */}
-      <Dialog open={isSaveCartDialogOpen} onOpenChange={setIsSaveCartDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Save Cart</DialogTitle>
-            <DialogDescription>
-              Save the current cart for later use
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Label>Cart Name</Label>
-            <Input
-              placeholder="e.g., Afternoon Sale, John Doe's Order..."
-              value={cartName}
-              onChange={(e) => setCartName(e.target.value)}
-              className="mt-2"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsSaveCartDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={saveCart}>Save Cart</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Load Cart Dialog */}
-      <Dialog open={isLoadCartDialogOpen} onOpenChange={setIsLoadCartDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Load Saved Cart</DialogTitle>
-            <DialogDescription>
-              Select a previously saved cart to load
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="max-h-[400px]">
-            <div className="space-y-2 py-4">
-              {savedCarts.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <History className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>No saved carts</p>
-                </div>
-              ) : (
-                savedCarts.map((savedCart) => (
-                  <div
-                    key={savedCart.id}
-                    className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{savedCart.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {savedCart.items.length} items · {savedCart.createdAt.toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => loadCart(savedCart)}
-                      >
-                        Load
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive"
-                        onClick={() => deleteSavedCart(savedCart.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </ScrollArea>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsLoadCartDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Checkout Dialog */}
       <Dialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
         <DialogContent className="max-w-2xl">
@@ -1018,7 +1422,7 @@ export default function POS() {
               
               <ScrollArea className="h-[200px] border rounded-lg p-3">
                 <div className="space-y-2">
-                  {cart.map((item) => (
+                  {activeCart.items.map((item) => (
                     <div key={item.id} className="flex justify-between text-sm">
                       <span className="flex-1 truncate">
                         {item.quantity}× {item.name}
@@ -1134,8 +1538,8 @@ export default function POS() {
 
               <div className="flex items-center gap-2 pt-2">
                 <Switch
-                  checked={printReceipt}
-                  onCheckedChange={setPrintReceipt}
+                  checked={shouldPrintReceipt}
+                  onCheckedChange={setShouldPrintReceipt}
                   id="print-receipt"
                 />
                 <Label htmlFor="print-receipt" className="flex items-center gap-2 cursor-pointer">
@@ -1153,7 +1557,7 @@ export default function POS() {
             <Button
               onClick={handleCheckout}
               disabled={
-                cart.length === 0 ||
+                activeCart.items.length === 0 ||
                 (selectedPaymentMethod === 'cash' && parseFloat(amountReceived || '0') < totals.total)
               }
               className="gap-2"

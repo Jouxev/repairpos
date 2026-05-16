@@ -194,6 +194,35 @@ ipcMain.handle('app:openExternal', async (_, url: string) => {
   await shell.openExternal(url)
 })
 
+// Image upload handler - saves images to media folder
+ipcMain.handle('image:save', async (_, { base64Data, filename, folder }: { base64Data: string; filename: string; folder: string }) => {
+  try {
+    const fs = await import('fs')
+    const path = await import('path')
+    
+    // Create media folder path
+    const mediaFolder = path.join(process.resourcesPath || app.getAppPath(), 'public', 'media', folder)
+    
+    // Ensure folder exists
+    if (!fs.existsSync(mediaFolder)) {
+      fs.mkdirSync(mediaFolder, { recursive: true })
+    }
+    
+    // Full file path
+    const filePath = path.join(mediaFolder, filename)
+    
+    // Convert base64 to buffer and save
+    const buffer = Buffer.from(base64Data, 'base64')
+    fs.writeFileSync(filePath, buffer)
+    
+    // Return relative path for storage in database
+    return `/media/${folder}/${filename}`
+  } catch (error) {
+    console.error('Error saving image:', error)
+    throw error
+  }
+})
+
 // App event handlers
 app.whenReady().then(async () => {
   await initDatabase()

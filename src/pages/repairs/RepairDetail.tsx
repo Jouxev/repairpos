@@ -31,7 +31,8 @@ import {
   History,
   FileText,
   Info,
-  AlertTriangle
+  AlertTriangle,
+  Ban
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { repairService, Repair, RepairPart } from '@/services/repairService'
@@ -40,10 +41,13 @@ import { userService, User as UserType } from '@/services/userService'
 import { useAuthStore } from '@/stores/authStore'
 
 // Status workflow
-const statusWorkflow = {
-  'PENDING': ['IN_PROGRESS', 'CANCELLED'],
-  'IN_PROGRESS': ['COMPLETED', 'CANCELLED'],
-  'COMPLETED': ['DELIVERED'],
+const statusWorkflow: Record<string, string[]> = {
+  'PENDING': ['IN_PROGRESS', 'REJECTED', 'CANCELLED'],
+  'IN_PROGRESS': ['COMPLETED_WAITING_PAYMENT', 'REJECTED', 'CANCELLED'],
+  'REJECTED': ['PENDING', 'CANCELLED'],
+  'COMPLETED_WAITING_PAYMENT': ['COMPLETED'],
+  'COMPLETED': ['FINISHED', 'DELIVERED'],
+  'FINISHED': ['DELIVERED'],
   'DELIVERED': [],
   'CANCELLED': []
 }
@@ -202,17 +206,17 @@ export default function RepairDetail() {
       if (addPartTab === 'database' && selectedProduct) {
         // Database product selection
         await repairService.addPart(id!, {
+          partName: selectedProduct.name,
           productId: selectedProduct.id,
           quantity: partQuantity,
-          unitPrice: partUnitPrice
+          unitCost: partUnitPrice
         })
       } else {
-        // Quick manual entry - create part without product link
+        // Quick manual entry
         await repairService.addPart(id!, {
-          productId: '', // Empty for manual parts
+          partName: quickPartName,
           quantity: partQuantity,
-          unitPrice: quickPartCost,
-          notes: quickPartName // Store name in notes
+          unitCost: quickPartCost
         })
       }
       
@@ -300,10 +304,39 @@ export default function RepairDetail() {
     }
 
     try {
+      // Update repair status
       await repairService.updateRepair(id!, {
         status: newStatus as any,
         technicianNotes: statusNote
       })
+
+      // If status is COMPLETED, calculate technician commission
+      if (newStatus === 'COMPLETED' && repair?.technicianId) {
+        try {
+          const commissionResult = await repairService.calculateTechnicianCommission(id!);
+          
+          if (commissionResult.profit > 0) {
+            toast({
+              title: 'Commission Earned!',
+              description: `Technician earned $${commissionResult.technicianCommission.toFixed(2)} from $${commissionResult.profit.toFixed(2)} profit`,
+            });
+          } else if (commissionResult.profit < 0) {
+            toast({
+              title: 'Loss Recorded',
+              description: `Technician share of loss: $${Math.abs(commissionResult.technicianCommission).toFixed(2)}`,
+              variant: 'destructive'
+            });
+          }
+        } catch (commissionError) {
+          console.error('Error calculating commission:', commissionError);
+          toast({
+            title: 'Warning',
+            description: 'Status updated but commission calculation failed',
+            variant: 'destructive'
+          });
+        }
+      }
+
       toast({
         title: 'Success',
         description: `Status updated to ${newStatus}`,
@@ -323,22 +356,24 @@ export default function RepairDetail() {
   }
 
   const calculateProfit = () => {
-    if (!repair) return { partsCost: 0, laborCost: 0, totalCost: 0, profit: 0, profitMargin: 0 }
+    if (!repair) return { partsCost: 0, totalCost: 0, profit: 0, profitMargin: 0 }
     
-    const partsCost = repair.parts?.reduce((sum, part) => sum + (part.unitPrice * part.quantity), 0) || 0
-    const laborCost = repair.repairCost * 0.4 // Estimated 40% labor cost
-    const totalCost = partsCost + laborCost
+    const partsCost = repair.partsCost || repair.parts?.reduce((sum, part) => sum + (part.unitCost * part.quantity), 0) || 0
+    const totalCost = partsCost
     const profit = repair.repairCost - totalCost
     const profitMargin = repair.repairCost > 0 ? (profit / repair.repairCost) * 100 : 0
     
-    return { partsCost, laborCost, totalCost, profit, profitMargin }
+    return { partsCost, totalCost, profit, profitMargin }
   }
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, string> = {
       'PENDING': 'bg-yellow-100 text-yellow-800 border-yellow-200',
       'IN_PROGRESS': 'bg-blue-100 text-blue-800 border-blue-200',
+      'REJECTED': 'bg-orange-100 text-orange-800 border-orange-200',
+      'COMPLETED_WAITING_PAYMENT': 'bg-purple-100 text-purple-800 border-purple-200',
       'COMPLETED': 'bg-green-100 text-green-800 border-green-200',
+      'FINISHED': 'bg-teal-100 text-teal-800 border-teal-200',
       'DELIVERED': 'bg-gray-100 text-gray-800 border-gray-200',
       'CANCELLED': 'bg-red-100 text-red-800 border-red-200',
     }
@@ -422,10 +457,6 @@ export default function RepairDetail() {
               <div>
                 <p className="text-xs text-green-600">Parts Cost</p>
                 <p className="font-semibold text-red-600">-${profit.partsCost.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-green-600">Labor</p>
-                <p className="font-semibold text-red-600">-${profit.laborCost.toFixed(2)}</p>
               </div>
             </div>
           </div>
@@ -559,15 +590,15 @@ export default function RepairDetail() {
                       <div className="flex items-center gap-3">
                         <Package className="h-5 w-5 text-muted-foreground" />
                         <div>
-                          <p className="font-medium">{part.product?.name || part.notes || 'Custom Part'}</p>
+                          <p className="font-medium">{part.partName || 'Custom Part'}</p>
                           <p className="text-sm text-muted-foreground">
-                            {part.product?.sku ? `SKU: ${part.product.sku}` : 'Manual entry'}
+                            {part.notes || 'Manual entry'}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="text-right">
-                          <p className="text-sm">{part.quantity} × ${part.unitPrice.toFixed(2)}</p>
+                          <p className="text-sm">{part.quantity} × ${part.unitCost.toFixed(2)}</p>
                           <p className="font-medium">${part.total.toFixed(2)}</p>
                         </div>
                         <Button
@@ -605,10 +636,6 @@ export default function RepairDetail() {
                 <div className="p-4 bg-muted rounded-lg">
                   <p className="text-sm text-muted-foreground">Parts Cost</p>
                   <p className="text-xl font-bold text-red-600">-${profit.partsCost.toFixed(2)}</p>
-                </div>
-                <div className="p-4 bg-muted rounded-lg">
-                  <p className="text-sm text-muted-foreground">Labor Cost</p>
-                  <p className="text-xl font-bold text-red-600">-${profit.laborCost.toFixed(2)}</p>
                 </div>
                 <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                   <p className="text-sm text-green-600 font-medium">Net Profit</p>

@@ -24,15 +24,7 @@ import { toast } from 'sonner'
 import { productService, CreateProductData } from '@/services/productService'
 import { categoryService, Category } from '@/services/categoryService'
 import { supplierService, Supplier } from '@/services/supplierService'
-
-// Electron API for file operations
-declare global {
-  interface Window {
-    electronAPI?: {
-      saveImage: (data: { base64Data: string; filename: string; folder: string }) => Promise<string>
-    }
-  }
-}
+import { saveBase64Image, getImageUrl } from '@/utils/imageUpload'
 
 interface NewProductProps {
   onProductCreated?: (product: any) => void
@@ -75,6 +67,11 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageBase64, setImageBase64] = useState<string | null>(null)
   
+  // Check if we're in edit mode
+  const pathname = location.pathname
+  const isEdit = pathname.includes('/edit')
+  const productId = isEdit ? pathname.split('/')[pathname.split('/').length - 2] : null
+  
   const [formData, setFormData] = useState<CreateProductData>({
     name: '',
     sku: '',
@@ -98,7 +95,46 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
   useEffect(() => {
     loadCategories()
     loadSuppliers()
-  }, [])
+    
+    // If we're in edit mode, load the product data
+    if (isEdit && productId) {
+      loadExistingProduct(productId)
+    }
+  }, [isEdit, productId])
+  
+  const loadExistingProduct = async (id: string) => {
+    try {
+      setIsLoading(true)
+      const product = await productService.getProductById(id)
+      console.log(product)
+      if (product) {
+        setFormData({
+          name: product.data.name || '',
+          sku: product.data.sku || '',
+          barcode: product.data.barcode || '',
+          description: product.data.description || '',
+          categoryId: product.data.categoryId || '',
+          supplierId: product.data.supplierId || '',
+          quantity: product.data.quantity || 0,
+          minStockAlert: product.data.minStockAlert || 1,
+          costPrice: product.data.costPrice || 0,
+          salePrice: product.data.salePrice || 0,
+          salePrice2: product.data.salePrice2 || 0,
+          salePrice3: product.data.salePrice3 || 0,
+          isActive: product.data.isActive !== false,
+          location: product.data.location || '',
+        })
+        if (product.image) {
+          setImagePreview(product.image)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading product:', error)
+      toast.error('Failed to load product data')
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const loadCategories = async () => {
     try {
@@ -156,9 +192,9 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
   }
 
   const saveImageToDisk = async (base64Data: string, filename: string): Promise<string> => {
-    if (window.electronAPI?.saveImage) {
+    if (window.electronAPI?.image?.save) {
       try {
-        const url = await window.electronAPI.saveImage({
+        const url = await window.electronAPI.image.save({
           base64Data,
           filename,
           folder: 'products'
@@ -217,8 +253,16 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
         image: imageUrl,
       }
       console.log(productData)
-      const createdProduct = await productService.createProduct(productData)
-      toast.success('Product created successfully')
+      let resultProduct
+      if (isEdit && productId) {
+        // Update existing product
+        resultProduct = await productService.updateProduct(productId, productData)
+        toast.success('Product updated successfully')
+      } else {
+        // Create new product
+        resultProduct = await productService.createProduct(productData)
+        toast.success('Product created successfully')
+      }
       
       // If we have a callback (for dialog mode), call it
       if (onProductCreated) {
@@ -244,8 +288,8 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
       {!inDialog && (
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">New Product</h1>
-            <p className="text-muted-foreground">Add a new product to your inventory</p>
+            <h1 className="text-3xl font-bold tracking-tight">{isEdit ? 'Edit Product' : 'New Product'}</h1>
+            <p className="text-muted-foreground">{isEdit ? 'Update the product details' : 'Add a new product to your inventory'}</p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => navigate('/products')}>
@@ -560,7 +604,7 @@ export default function NewProduct({ onProductCreated, inDialog = false }: NewPr
             <div className="flex flex-col gap-2">
               <Button type="submit" disabled={isLoading} className="w-full">
                 <Save className="h-4 w-4 mr-2" />
-                {isLoading ? 'Creating...' : 'Create Product'}
+                {isEdit ? isLoading ? 'Updating...' : 'Update Product' :  isLoading ? 'Creating...' : 'Create Product'} 
               </Button>
               {!inDialog && (
                 <Button

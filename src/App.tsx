@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { Toaster } from '@/components/ui/toaster'
+import { Toaster as SonnerToaster } from 'sonner'
 
 // Layouts
 import MainLayout from '@/components/layout/MainLayout'
@@ -51,6 +52,9 @@ import NewPurchase from '@/pages/purchases/NewPurchase'
 // Sales
 import SalesList from '@/pages/sales/SalesList'
 import NewSale from '@/pages/sales/NewSale'
+
+// Technician Profile
+import TechnicianProfilePage from '@/pages/technician/TechnicianProfilePage'
 
 // Protected Route Component
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
@@ -211,6 +215,13 @@ function App() {
             </ProtectedRoute>
           } />
 
+          {/* Profile */}
+          <Route path="/profile" element={
+            <ProtectedRoute>
+              <TechnicianProfilePage />
+            </ProtectedRoute>
+          } />
+
           {/* Reports */}
           <Route path="/reports" element={
             <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
@@ -227,6 +238,7 @@ function App() {
         </Route>
       </Routes>
       <Toaster />
+      <SonnerToaster position="top-center" richColors closeButton />
     </>
   )
 }

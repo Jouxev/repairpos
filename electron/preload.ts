@@ -12,6 +12,9 @@ export interface IElectronAPI {
     getVersion: () => Promise<string>
     openExternal: (url: string) => Promise<void>
   }
+  image: {
+    save: (data: { base64Data: string; filename: string; folder: string }) => Promise<string>
+  }
 }
 
 const electronAPI: IElectronAPI = {
@@ -25,6 +28,9 @@ const electronAPI: IElectronAPI = {
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+  },
+  image: {
+    save: (data) => ipcRenderer.invoke('image:save', data),
   },
 }
 

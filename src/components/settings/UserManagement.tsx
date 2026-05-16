@@ -83,6 +83,8 @@ interface User {
   lastLoginAt?: Date
   createdAt: Date
   permissions: string[]
+  commissionRate?: number
+  balance?: number
 }
 
 const roles = [
@@ -128,7 +130,11 @@ export default function UserManagement() {
     role: 'SELLER' as UserRole,
     isActive: true,
     permissions: [] as string[],
+    commissionRate: 50,
   })
+
+  // Get current user role (for admin check)
+  const [currentUserRole, setCurrentUserRole] = useState<string>('ADMIN')
 
   // Load users on mount
   useEffect(() => {
@@ -158,6 +164,8 @@ export default function UserManagement() {
         lastLoginAt: u.lastLoginAt || undefined,
         createdAt: u.createdAt,
         permissions: permissions.map(p => p.id), // Default all permissions for now
+        commissionRate: u.commissionRate,
+        balance: u.balance,
       }))
       
       setUsers(mappedUsers)
@@ -229,8 +237,15 @@ export default function UserManagement() {
           isActive: formData.isActive,
         }
 
-        if (formData.password) {
-          updateData.password = formData.password
+        // Only admin can update password and commission rate
+        if (currentUserRole === 'ADMIN') {
+          if (formData.password) {
+            updateData.password = formData.password
+          }
+          // Only allow commission rate for technicians
+          if (formData.role === 'TECHNICIAN') {
+            updateData.commissionRate = formData.commissionRate
+          }
         }
 
         await userService.updateUser(editingUser.id, updateData)
@@ -245,6 +260,7 @@ export default function UserManagement() {
           phone: formData.phone,
           role: formData.role,
           isActive: formData.isActive,
+          commissionRate: formData.role === 'TECHNICIAN' ? formData.commissionRate : undefined,
         })
         toast.success('User created successfully')
       }
@@ -272,6 +288,7 @@ export default function UserManagement() {
       role: 'SELLER',
       isActive: true,
       permissions: [],
+      commissionRate: 50,
     })
     setShowPassword(false)
     setShowConfirmPassword(false)
@@ -289,6 +306,7 @@ export default function UserManagement() {
       role: user.role,
       isActive: user.isActive,
       permissions: user.permissions,
+      commissionRate: user.commissionRate ?? 50,
     })
     setIsDialogOpen(true)
   }
@@ -490,15 +508,64 @@ export default function UserManagement() {
                   </div>
                 </div>
 
-                {/* Password Fields (only for new users or password reset) */}
-                {!editingUser && (
+                {/* Commission Rate - Only for Technicians, Only Admin can edit */}
+                {formData.role === 'TECHNICIAN' && currentUserRole === 'ADMIN' && (
                   <>
                     <Separator />
                     <div className="space-y-4">
-                      <h4 className="text-sm font-semibold">Set Password</h4>
+                      <h4 className="text-sm font-semibold">Technician Settings</h4>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="password">Password *</Label>
+                          <Label htmlFor="commissionRate">Commission Rate (%)</Label>
+                          <Input
+                            id="commissionRate"
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={formData.commissionRate}
+                            onChange={(e) =>
+                              setFormData({ ...formData, commissionRate: parseInt(e.target.value) || 0 })
+                            }
+                            placeholder="50"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Percentage of repair profit the technician earns
+                          </p>
+                        </div>
+                        {editingUser && editingUser.balance !== undefined && (
+                          <div className="space-y-2">
+                            <Label>Current Balance</Label>
+                            <div className="flex items-center gap-2 pt-2">
+                              <span className="text-2xl font-bold">${editingUser.balance?.toFixed(2) || '0.00'}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Current earnings balance
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Password Fields (for new users or admin editing) */}
+                {(!editingUser || currentUserRole === 'ADMIN') && (
+                  <>
+                    <Separator />
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-semibold">
+                        {editingUser ? 'Reset Password (Admin Only)' : 'Set Password'}
+                      </h4>
+                      {editingUser && (
+                        <p className="text-xs text-muted-foreground">
+                          Leave blank to keep current password. Only admins can change passwords.
+                        </p>
+                      )}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="password">
+                            {editingUser ? 'New Password' : 'Password *'}
+                          </Label>
                           <div className="relative">
                             <Input
                               id="password"
@@ -507,7 +574,7 @@ export default function UserManagement() {
                               onChange={(e) =>
                                 setFormData({ ...formData, password: e.target.value })
                               }
-                              placeholder="Enter password"
+                              placeholder={editingUser ? 'Enter new password' : 'Enter password'}
                               required={!editingUser}
                             />
                             <Button
@@ -526,7 +593,9 @@ export default function UserManagement() {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="confirmPassword">Confirm Password *</Label>
+                          <Label htmlFor="confirmPassword">
+                            {editingUser ? 'Confirm New Password' : 'Confirm Password *'}
+                          </Label>
                           <div className="relative">
                             <Input
                               id="confirmPassword"
@@ -535,7 +604,7 @@ export default function UserManagement() {
                               onChange={(e) =>
                                 setFormData({ ...formData, confirmPassword: e.target.value })
                               }
-                              placeholder="Confirm password"
+                              placeholder={editingUser ? 'Confirm new password' : 'Confirm password'}
                               required={!editingUser}
                             />
                             <Button
@@ -744,13 +813,20 @@ export default function UserManagement() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`w-2 h-2 rounded-full ${getRoleColor(user.role)}`}
-                          />
-                          <span className="text-sm">
-                            {getRoleLabel(user.role)}
-                          </span>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`w-2 h-2 rounded-full ${getRoleColor(user.role)}`}
+                            />
+                            <span className="text-sm">
+                              {getRoleLabel(user.role)}
+                            </span>
+                          </div>
+                          {user.role === 'TECHNICIAN' && user.commissionRate !== undefined && (
+                            <Badge variant="outline" className="text-xs w-fit">
+                              {user.commissionRate}% Commission
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>

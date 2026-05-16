@@ -188,9 +188,7 @@ class InventoryAlertService {
     await notificationService.markAsRead(alertId)
     
     // Log the resolution
-    await ActivityLogService.log({
-      action: 'UPDATE',
-      module: 'INVENTORY',
+    await activityLogService.logActivity('UPDATE', 'INVENTORY', {
       description: `Inventory alert ${alertId} resolved`,
     })
   }

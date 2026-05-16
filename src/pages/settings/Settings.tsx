@@ -5,11 +5,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
-import { Save, Store, Users, Bell, Shield } from 'lucide-react'
+import { Save, Store, Users, Bell, Shield, Printer } from 'lucide-react'
 import UserManagement from '@/components/settings/UserManagement'
+import PrintingSettings from './PrintingSettings'
 
 export default function Settings() {
   const [isLoading, setIsLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('shop')
 
   const handleSave = async () => {
     setIsLoading(true)
@@ -30,7 +32,7 @@ export default function Settings() {
         </Button>
       </div>
 
-      <Tabs defaultValue="shop" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="shop">
             <Store className="mr-2 h-4 w-4" />
@@ -39,6 +41,10 @@ export default function Settings() {
           <TabsTrigger value="users">
             <Users className="mr-2 h-4 w-4" />
             Users
+          </TabsTrigger>
+          <TabsTrigger value="printing">
+            <Printer className="mr-2 h-4 w-4" />
+            Printing
           </TabsTrigger>
           <TabsTrigger value="notifications">
             <Bell className="mr-2 h-4 w-4" />
@@ -91,6 +97,10 @@ export default function Settings() {
 
         <TabsContent value="users">
           <UserManagement />
+        </TabsContent>
+
+        <TabsContent value="printing">
+          <PrintingSettings />
         </TabsContent>
 
         <TabsContent value="notifications">

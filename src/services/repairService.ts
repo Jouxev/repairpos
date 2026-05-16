@@ -11,7 +11,7 @@ export interface Repair {
   repairCost: number
   prepayment: number
   dueAmount: number
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'DELIVERED' | 'CANCELLED'
+  status: 'PENDING' | 'IN_PROGRESS' | 'REJECTED' | 'COMPLETED_WAITING_PAYMENT' | 'COMPLETED' | 'FINISHED' | 'DELIVERED' | 'CANCELLED'
   priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
   accessoriesReceived?: string
   technicianNotes?: string
@@ -38,21 +38,17 @@ export interface Repair {
     fullName: string
   }
   parts?: RepairPart[]
+  partsCost?: number
 }
 
 export interface RepairPart {
   id: string
+  partName: string
   quantity: number
-  unitPrice: number
+  unitCost: number
   total: number
-  repairId: string
-  productId: string
   notes?: string
-  product?: {
-    id: string
-    name: string
-    sku?: string
-  }
+  productId?: string // optional reference to product
 }
 
 export interface CreateRepairData {
@@ -70,6 +66,7 @@ export interface CreateRepairData {
   expectedDeliveryDate?: Date
   clientId: string
   technicianId?: string
+  parts?: RepairPart[]
 }
 
 export interface UpdateRepairData {
@@ -84,11 +81,12 @@ export interface UpdateRepairData {
   prepayment?: number
   accessoriesReceived?: string
   technicianNotes?: string
-  status?: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'DELIVERED' | 'CANCELLED'
+  status?: 'PENDING' | 'IN_PROGRESS' | 'REJECTED' | 'COMPLETED_WAITING_PAYMENT' | 'COMPLETED' | 'FINISHED' | 'DELIVERED' | 'CANCELLED'
   priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
   expectedDeliveryDate?: Date
   technicianId?: string
   cancellationReason?: string
+  parts?: RepairPart[]
 }
 
 export interface RepairFilters {
@@ -113,6 +111,21 @@ declare global {
 
 const electronAPI = window.electronAPI
 
+// Helper to parse parts from JSON
+const parseParts = (parts: string | null | undefined): RepairPart[] => {
+  if (!parts) return []
+  try {
+    return JSON.parse(parts)
+  } catch {
+    return []
+  }
+}
+
+// Helper to calculate parts cost
+const calculatePartsCost = (parts: RepairPart[]): number => {
+  return parts.reduce((sum, part) => sum + (part.total || 0), 0)
+}
+
 class RepairService {
   private static instance: RepairService
 
@@ -135,19 +148,24 @@ class RepairService {
           where: this.buildFilters(filters),
           include: {
             client: true,
-            technician: true,
-            parts: {
-              include: {
-                product: true
-              }
-            }
+            technician: true
           },
           orderBy: {
             createdAt: 'desc'
           }
         }
       })
-      return result?.data || []
+      
+      const repairs = result?.data || []
+      // Parse parts JSON and calculate partsCost
+      return repairs.map((repair: Repair) => {
+        const parsedParts = parseParts(repair.parts as unknown as string)
+        return {
+          ...repair,
+          parts: parsedParts,
+          partsCost: calculatePartsCost(parsedParts)
+        }
+      })
     } catch (error) {
       console.error('Error fetching repairs:', error)
       throw new Error('Failed to fetch repairs')
@@ -164,16 +182,21 @@ class RepairService {
           where: { id },
           include: {
             client: true,
-            technician: true,
-            parts: {
-              include: {
-                product: true
-              }
-            }
+            technician: true
           }
         }
       })
-      return result?.data
+      
+      const repair = result?.data
+      if (!repair) return null
+      
+      // Parse parts JSON and calculate partsCost
+      const parsedParts = parseParts(repair.parts as unknown as string)
+      return {
+        ...repair,
+        parts: parsedParts,
+        partsCost: calculatePartsCost(parsedParts)
+      }
     } catch (error) {
       console.error('Error fetching repair:', error)
       throw new Error('Failed to fetch repair')
@@ -185,6 +208,9 @@ class RepairService {
     try {
       // Generate ticket number
       const ticketNumber = await this.generateTicketNumber()
+      
+      // Convert parts array to JSON string
+      const parts = data.parts && data.parts.length > 0 ? JSON.stringify(data.parts) : null
 
       const result = await electronAPI.db.query({
         model: 'repair',
@@ -208,14 +234,27 @@ class RepairService {
             expectedDeliveryDate: data.expectedDeliveryDate,
             clientId: data.clientId,
             technicianId: data.technicianId,
+            parts
           },
           include: {
             client: true,
-            technician: true,
+            technician: true
           }
         }
       })
-      return result?.data
+      
+      const repair = result?.data
+      if (!repair) {
+        throw new Error('Failed to create repair')
+      }
+      
+      // Parse parts JSON for return
+      const parsedParts = parseParts(repair.parts as unknown as string)
+      return {
+        ...repair,
+        parts: parsedParts,
+        partsCost: calculatePartsCost(parsedParts)
+      }
     } catch (error) {
       console.error('Error creating repair:', error)
       throw new Error('Failed to create repair')
@@ -226,6 +265,11 @@ class RepairService {
   async updateRepair(id: string, data: UpdateRepairData): Promise<Repair> {
     try {
       const updateData: any = { ...data }
+      
+      // Handle parts update
+      if (data.parts !== undefined) {
+        updateData.parts = data.parts && data.parts.length > 0 ? JSON.stringify(data.parts) : null
+      }
       
       // Calculate due amount if repairCost or prepayment changed
       if (data.repairCost !== undefined || data.prepayment !== undefined) {
@@ -244,14 +288,23 @@ class RepairService {
           case 'IN_PROGRESS':
             updateData.startedAt = now
             break
+          case 'COMPLETED_WAITING_PAYMENT':
+            // No specific timestamp, waiting for payment
+            break
           case 'COMPLETED':
             updateData.completedAt = now
+            break
+          case 'FINISHED':
+            // Mark as finished (fully processed)
             break
           case 'DELIVERED':
             updateData.deliveredAt = now
             break
           case 'CANCELLED':
             updateData.cancelledAt = now
+            break
+          case 'REJECTED':
+            // Can be moved back to PENDING
             break
         }
       }
@@ -264,11 +317,23 @@ class RepairService {
           data: updateData,
           include: {
             client: true,
-            technician: true,
+            technician: true
           }
         }
       })
-      return result?.data
+      
+      const repair = result?.data
+      if (!repair) {
+        throw new Error('Failed to update repair')
+      }
+      
+      // Parse parts JSON for return
+      const parsedParts = parseParts(repair.parts as unknown as string)
+      return {
+        ...repair,
+        parts: parsedParts,
+        partsCost: calculatePartsCost(parsedParts)
+      }
     } catch (error) {
       console.error('Error updating repair:', error)
       throw new Error('Failed to update repair')
@@ -292,36 +357,30 @@ class RepairService {
   }
 
   // Add a part to a repair
-  async addPart(repairId: string, data: { productId: string; quantity: number; unitPrice: number; notes?: string }): Promise<void> {
+  async addPart(repairId: string, data: { partName: string; quantity: number; unitCost: number; notes?: string; productId?: string }): Promise<Repair> {
     try {
-      await electronAPI.db.query({
-        model: 'repairPart',
-        operation: 'create',
-        args: {
-          data: {
-            repairId,
-            productId: data.productId || null,
-            quantity: data.quantity,
-            unitPrice: data.unitPrice,
-            total: data.quantity * data.unitPrice,
-            notes: data.notes || null
-          }
-        }
-      })
-
-      // Update inventory if product exists
-      if (data.productId) {
-        await electronAPI.db.query({
-          model: 'product',
-          operation: 'update',
-          args: {
-            where: { id: data.productId },
-            data: {
-              quantity: { decrement: data.quantity }
-            }
-          }
-        })
+      // Get current repair
+      const repair = await this.getRepairById(repairId)
+      if (!repair) {
+        throw new Error('Repair not found')
       }
+      
+      // Create new part
+      const newPart: RepairPart = {
+        id: crypto.randomUUID(),
+        partName: data.partName,
+        quantity: data.quantity,
+        unitCost: data.unitCost,
+        total: data.quantity * data.unitCost,
+        notes: data.notes
+      }
+      
+      // Add to existing parts
+      const currentParts = repair.parts || []
+      const updatedParts = [...currentParts, newPart]
+      
+      // Update repair with new parts
+      return await this.updateRepair(repairId, { parts: updatedParts })
     } catch (error) {
       console.error('Error adding part:', error)
       throw new Error('Failed to add part')
@@ -329,41 +388,20 @@ class RepairService {
   }
 
   // Remove a part from a repair
-  async removePart(repairId: string, partId: string): Promise<void> {
+  async removePart(repairId: string, partId: string): Promise<Repair> {
     try {
-      // First get the part to restore inventory
-      const partResult = await electronAPI.db.query({
-        model: 'repairPart',
-        operation: 'findUnique',
-        args: {
-          where: { id: partId }
-        }
-      })
-      
-      const part = partResult?.data
-
-      // Delete the part
-      await electronAPI.db.query({
-        model: 'repairPart',
-        operation: 'delete',
-        args: {
-          where: { id: partId }
-        }
-      })
-
-      // Restore inventory if product exists
-      if (part?.productId) {
-        await electronAPI.db.query({
-          model: 'product',
-          operation: 'update',
-          args: {
-            where: { id: part.productId },
-            data: {
-              quantity: { increment: part.quantity }
-            }
-          }
-        })
+      // Get current repair
+      const repair = await this.getRepairById(repairId)
+      if (!repair) {
+        throw new Error('Repair not found')
       }
+      
+      // Remove part from list
+      const currentParts = repair.parts || []
+      const updatedParts = currentParts.filter(part => part.id !== partId)
+      
+      // Update repair with new parts
+      return await this.updateRepair(repairId, { parts: updatedParts })
     } catch (error) {
       console.error('Error removing part:', error)
       throw new Error('Failed to remove part')
@@ -445,6 +483,93 @@ class RepairService {
     }
 
     return where
+  }
+
+  // Calculate and distribute technician commission for a completed repair
+  async calculateTechnicianCommission(repairId: string): Promise<{
+    profit: number;
+    technicianCommission: number;
+    storeProfit: number;
+    technicianId: string;
+  }> {
+    try {
+      // Import userService here to avoid circular dependency
+      const { userService } = await import('./userService');
+      
+      // Get the repair details
+      const repair = await this.getRepairById(repairId);
+      if (!repair) {
+        throw new Error('Repair not found');
+      }
+
+      if (!repair.technicianId) {
+        throw new Error('No technician assigned to this repair');
+      }
+
+      // Get technician details
+      const technician = await userService.getUserById(repair.technicianId);
+      if (!technician) {
+        throw new Error('Technician not found');
+      }
+
+      // Calculate profit/loss
+      const partsCost = repair.partsCost || 0;
+      const revenue = repair.repairCost || 0;
+      const profit = revenue - partsCost;
+
+      // Get technician's commission rate (default to 50%)
+      const commissionRate = technician.commissionRate ?? 50;
+
+      // Calculate commission
+      let technicianCommission: number;
+      let storeProfit: number;
+
+      if (profit > 0) {
+        // Profit scenario: technician gets commission % of profit
+        technicianCommission = profit * (commissionRate / 100);
+        storeProfit = profit - technicianCommission;
+        
+        // Record the commission earning
+        await userService.addTechnicianEarning(
+          technician.id,
+          technicianCommission,
+          'COMMISSION',
+          `Commission for repair ${repair.ticketNumber} (${commissionRate}% of $${profit.toFixed(2)} profit)`,
+          repairId
+        );
+      } else if (profit < 0) {
+        // Loss scenario: technician shares the loss according to commission rate
+        const loss = Math.abs(profit);
+        const technicianShare = loss * (commissionRate / 100);
+        
+        // Technician loses money (negative commission)
+        technicianCommission = -technicianShare;
+        storeProfit = -(loss - technicianShare);
+        
+        // Record the penalty
+        await userService.addTechnicianEarning(
+          technician.id,
+          technicianCommission, // Negative amount
+          'PENALTY',
+          `Loss share for repair ${repair.ticketNumber} (${commissionRate}% of $${loss.toFixed(2)} loss)`,
+          repairId
+        );
+      } else {
+        // Break-even scenario
+        technicianCommission = 0;
+        storeProfit = 0;
+      }
+
+      return {
+        profit,
+        technicianCommission,
+        storeProfit,
+        technicianId: technician.id
+      };
+    } catch (error) {
+      console.error('Error calculating technician commission:', error);
+      throw error;
+    }
   }
 }
 

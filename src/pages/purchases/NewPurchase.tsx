@@ -29,6 +29,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Dialog,
@@ -84,6 +85,7 @@ export default function NewPurchase() {
   })
 
   const [items, setItems] = useState<FormItem[]>([])
+  const [updateStock, setUpdateStock] = useState(true)
 
   // Calculations
   const subtotal = items.reduce((sum, item) => sum + item.total, 0)
@@ -101,7 +103,7 @@ export default function NewPurchase() {
         productService.getProducts(),
       ])
       setSuppliers(suppliersData || [])
-      setProducts(productsData || [])
+      setProducts(productsData.data || [])
     } catch (error: any) {
       toast.error('Failed to load data: ' + error.message)
       setSuppliers([])
@@ -205,6 +207,7 @@ export default function NewPurchase() {
         expectedDeliveryDate: formData.expectedDeliveryDate
           ? new Date(formData.expectedDeliveryDate)
           : undefined,
+        updateStock,
       }
 
       await purchaseService.createPurchase(purchaseData)
@@ -490,6 +493,26 @@ export default function NewPurchase() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Update Stock Checkbox */}
+            <div className="flex items-start space-x-2 p-4 bg-muted/50 rounded-lg">
+              <Checkbox
+                id="updateStock"
+                checked={updateStock}
+                onCheckedChange={(checked) => setUpdateStock(checked as boolean)}
+              />
+              <div className="grid gap-1.5 leading-none">
+                <Label
+                  htmlFor="updateStock"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Update stock quantity
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  When checked, product quantities will be automatically updated based on this purchase
+                </p>
+              </div>
+            </div>
 
             {/* Submit Buttons */}
             <div className="flex justify-end gap-4">
