@@ -9,7 +9,8 @@ import {
   TrendingUp,
   TrendingDown,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react'
 import { 
   AreaChart, 
@@ -25,74 +26,95 @@ import {
   Pie,
   Cell
 } from 'recharts'
-
-// Mock data - replace with actual data from your API
-const salesData = [
-  { name: 'Mon', sales: 1200, repairs: 800 },
-  { name: 'Tue', sales: 1900, repairs: 1200 },
-  { name: 'Wed', sales: 1500, repairs: 900 },
-  { name: 'Thu', sales: 2200, repairs: 1100 },
-  { name: 'Fri', sales: 2800, repairs: 1400 },
-  { name: 'Sat', sales: 3200, repairs: 1600 },
-  { name: 'Sun', sales: 2400, repairs: 1300 },
-]
-
-const repairStatusData = [
-  { name: 'Pending', value: 15, color: '#f59e0b' },
-  { name: 'In Progress', value: 25, color: '#3b82f6' },
-  { name: 'Completed', value: 45, color: '#10b981' },
-  { name: 'Delivered', value: 35, color: '#6366f1' },
-]
-
-const topProducts = [
-  { name: 'iPhone Screen', sales: 145, revenue: 7250 },
-  { name: 'Samsung Battery', sales: 89, revenue: 3560 },
-  { name: 'Charging Port', sales: 76, revenue: 1520 },
-  { name: 'Back Cover', sales: 65, revenue: 1950 },
-  { name: 'Screen Protector', sales: 234, revenue: 2340 },
-]
-
-const recentRepairs = [
-  { id: 'REP-001', customer: 'John Doe', device: 'iPhone 13 Pro', status: 'In Progress', amount: 150 },
-  { id: 'REP-002', customer: 'Jane Smith', device: 'Samsung S21', status: 'Pending', amount: 120 },
-  { id: 'REP-003', customer: 'Mike Johnson', device: 'iPhone 12', status: 'Completed', amount: 180 },
-  { id: 'REP-004', customer: 'Sarah Williams', device: 'Pixel 6', status: 'In Progress', amount: 140 },
-]
+import { dashboardService, DashboardData } from '@/services/dashboardService'
+import { toast } from '@/hooks/use-toast'
 
 export default function Dashboard() {
   const [mounted, setMounted] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<DashboardData | null>(null)
 
   useEffect(() => {
     setMounted(true)
+    loadDashboardData()
   }, [])
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true)
+      const dashboardData = await dashboardService.getDashboardData()
+      setData(dashboardData)
+    } catch (error) {
+      console.error('Error loading dashboard data:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to load dashboard data',
+        variant: 'destructive'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   if (!mounted) {
     return null
   }
 
+  // Default data for when loading or error
+  const defaultData: DashboardData = {
+    stats: {
+      todaySales: 0,
+      todaySalesChange: 0,
+      activeRepairs: 0,
+      pendingRepairs: 0,
+      newCustomers: 0,
+      newCustomersChange: 0,
+      lowStockItems: 0
+    },
+    salesData: [],
+    repairStatusData: [],
+    topProducts: [],
+    recentRepairs: []
+  }
+
+  const dashboardData = data || defaultData
+  const { stats, salesData, repairStatusData, topProducts, recentRepairs } = dashboardData
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Overview of your repair shop performance and key metrics.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">
+            Overview of your repair shop performance and key metrics.
+          </p>
+        </div>
+        {loading && (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm">Loading...</span>
+          </div>
+        )}
       </div>
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Today's Sales</CardTitle>
+            <CardTitle className="text-sm font-medium">Today&apos;s Sales</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$2,450</div>
+            <div className="text-2xl font-bold">${stats.todaySales.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              <span className="text-emerald-500 flex items-center">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                +12%
+              <span className={`flex items-center ${stats.todaySalesChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                {stats.todaySalesChange >= 0 ? (
+                  <TrendingUp className="h-3 w-3 mr-1" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 mr-1" />
+                )}
+                {stats.todaySalesChange >= 0 ? '+' : ''}{stats.todaySalesChange}%
               </span>{' '}
               from yesterday
             </p>
@@ -105,11 +127,11 @@ export default function Dashboard() {
             <Wrench className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">24</div>
+            <div className="text-2xl font-bold">{stats.activeRepairs}</div>
             <p className="text-xs text-muted-foreground">
               <span className="text-amber-500 flex items-center">
                 <Clock className="h-3 w-3 mr-1" />
-                8 pending
+                {stats.pendingRepairs} pending
               </span>{' '}
               diagnosis
             </p>
@@ -122,11 +144,15 @@ export default function Dashboard() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">12</div>
+            <div className="text-2xl font-bold">{stats.newCustomers}</div>
             <p className="text-xs text-muted-foreground">
-              <span className="text-emerald-500 flex items-center">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                +8%
+              <span className={`flex items-center ${stats.newCustomersChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                {stats.newCustomersChange >= 0 ? (
+                  <TrendingUp className="h-3 w-3 mr-1" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 mr-1" />
+                )}
+                {stats.newCustomersChange >= 0 ? '+' : ''}{stats.newCustomersChange}%
               </span>{' '}
               from last week
             </p>
@@ -139,7 +165,7 @@ export default function Dashboard() {
             <AlertCircle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">7</div>
+            <div className="text-2xl font-bold text-destructive">{stats.lowStockItems}</div>
             <p className="text-xs text-muted-foreground">
               <span className="text-destructive flex items-center">
                 <TrendingUp className="h-3 w-3 mr-1" />
@@ -170,32 +196,38 @@ export default function Dashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="pl-2">
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={salesData}>
-                    <defs>
-                      <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                      </linearGradient>
-                      <linearGradient id="colorRepairs" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis dataKey="name" className="text-xs" />
-                    <YAxis className="text-xs" />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'hsl(var(--card))',
-                        border: '1px solid hsl(var(--border))',
-                        borderRadius: '0.5rem'
-                      }}
-                    />
-                    <Area type="monotone" dataKey="sales" stroke="#3b82f6" fillOpacity={1} fill="url(#colorSales)" name="Sales" />
-                    <Area type="monotone" dataKey="repairs" stroke="#10b981" fillOpacity={1} fill="url(#colorRepairs)" name="Repairs" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {salesData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <AreaChart data={salesData}>
+                      <defs>
+                        <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorRepairs" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis dataKey="name" className="text-xs" />
+                      <YAxis className="text-xs" />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'hsl(var(--card))',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '0.5rem'
+                        }}
+                      />
+                      <Area type="monotone" dataKey="sales" stroke="#3b82f6" fillOpacity={1} fill="url(#colorSales)" name="Sales" />
+                      <Area type="monotone" dataKey="repairs" stroke="#10b981" fillOpacity={1} fill="url(#colorRepairs)" name="Repairs" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                    No sales data available
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -208,36 +240,44 @@ export default function Dashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
-                    <Pie
-                      data={repairStatusData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {repairStatusData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
+                {repairStatusData.length > 0 ? (
+                  <>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <PieChart>
+                        <Pie
+                          data={repairStatusData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {repairStatusData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      {repairStatusData.map((status) => (
+                        <div key={status.name} className="flex items-center gap-2 text-sm">
+                          <div 
+                            className="h-3 w-3 rounded-full" 
+                            style={{ backgroundColor: status.color }}
+                          />
+                          <span className="text-muted-foreground">{status.name}:</span>
+                          <span className="font-medium">{status.value}</span>
+                        </div>
                       ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  {repairStatusData.map((status) => (
-                    <div key={status.name} className="flex items-center gap-2 text-sm">
-                      <div 
-                        className="h-3 w-3 rounded-full" 
-                        style={{ backgroundColor: status.color }}
-                      />
-                      <span className="text-muted-foreground">{status.name}:</span>
-                      <span className="font-medium">{status.value}</span>
                     </div>
-                  ))}
-                </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center h-[250px] text-muted-foreground">
+                    No repair data available
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -250,31 +290,37 @@ export default function Dashboard() {
                 <CardDescription>Latest repair tickets and their status</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {recentRepairs.map((repair) => (
-                    <div key={repair.id} className="flex items-center justify-between rounded-lg border p-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`h-2 w-2 rounded-full ${
-                          repair.status === 'Completed' ? 'bg-green-500' :
-                          repair.status === 'In Progress' ? 'bg-blue-500' :
-                          'bg-amber-500'
-                        }`} />
-                        <div>
-                          <p className="text-sm font-medium">{repair.id}</p>
-                          <p className="text-xs text-muted-foreground">{repair.customer} • {repair.device}</p>
+                {recentRepairs.length > 0 ? (
+                  <div className="space-y-4">
+                    {recentRepairs.map((repair) => (
+                      <div key={repair.id} className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-2 w-2 rounded-full ${
+                            repair.status === 'Completed' || repair.status === 'FINISHED' ? 'bg-green-500' :
+                            repair.status === 'In Progress' || repair.status === 'IN_PROGRESS' ? 'bg-blue-500' :
+                            'bg-amber-500'
+                          }`} />
+                          <div>
+                            <p className="text-sm font-medium">{repair.id}</p>
+                            <p className="text-xs text-muted-foreground">{repair.customer} • {repair.device}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-medium">${repair.amount}</p>
+                          <p className={`text-xs ${
+                            repair.status === 'Completed' || repair.status === 'FINISHED' ? 'text-green-600' :
+                            repair.status === 'In Progress' || repair.status === 'IN_PROGRESS' ? 'text-blue-600' :
+                            'text-amber-600'
+                          }`}>{repair.status}</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium">${repair.amount}</p>
-                        <p className={`text-xs ${
-                          repair.status === 'Completed' ? 'text-green-600' :
-                          repair.status === 'In Progress' ? 'text-blue-600' :
-                          'text-amber-600'
-                        }`}>{repair.status}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+                    No recent repairs
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -284,22 +330,28 @@ export default function Dashboard() {
                 <CardDescription>Best selling products this month</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {topProducts.map((product, index) => (
-                    <div key={product.name} className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                          {index + 1}
+                {topProducts.length > 0 ? (
+                  <div className="space-y-4">
+                    {topProducts.map((product, index) => (
+                      <div key={product.name} className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                            {index + 1}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">{product.name}</p>
+                            <p className="text-xs text-muted-foreground">{product.sales} sold</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium">{product.name}</p>
-                          <p className="text-xs text-muted-foreground">{product.sales} sold</p>
-                        </div>
+                        <p className="text-sm font-medium">${product.revenue.toLocaleString()}</p>
                       </div>
-                      <p className="text-sm font-medium">${product.revenue.toLocaleString()}</p>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+                    No sales data available
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
