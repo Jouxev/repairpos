@@ -194,6 +194,134 @@ ipcMain.handle('app:openExternal', async (_, url: string) => {
   await shell.openExternal(url)
 })
 
+// Image upload handler - saves images to media folder
+ipcMain.handle('image:save', async (_, { base64Data, filename, folder }: { base64Data: string; filename: string; folder: string }) => {
+  try {
+    const fs = await import('fs')
+    const path = await import('path')
+    
+    // Create media folder path
+    const mediaFolder = path.join(process.resourcesPath || app.getAppPath(), 'public', 'media', folder)
+    
+    // Ensure folder exists
+    if (!fs.existsSync(mediaFolder)) {
+      fs.mkdirSync(mediaFolder, { recursive: true })
+    }
+    
+    // Full file path
+    const filePath = path.join(mediaFolder, filename)
+    
+    // Convert base64 to buffer and save
+    const buffer = Buffer.from(base64Data, 'base64')
+    fs.writeFileSync(filePath, buffer)
+    
+    // Return relative path for storage in database
+    return `/media/${folder}/${filename}`
+  } catch (error) {
+    console.error('Error saving image:', error)
+    throw error
+  }
+})
+
+// Printing Template IPC Handlers
+ipcMain.handle('printing-template:getAll', async () => {
+  try {
+    const templates = await prisma.printTemplate.findMany({
+      orderBy: { createdAt: 'desc' },
+    })
+    return templates.map(t => ({
+      ...t,
+      headerFields: JSON.parse(t.headerFields),
+      bodyFields: JSON.parse(t.bodyFields),
+      footerFields: JSON.parse(t.footerFields),
+    }))
+  } catch (error) {
+    console.error('Error getting all templates:', error)
+    throw error
+  }
+})
+
+ipcMain.handle('printing-template:getById', async (_, id: string) => {
+  try {
+    const template = await prisma.printTemplate.findUnique({ where: { id } })
+    if (!template) return null
+    return {
+      ...template,
+      headerFields: JSON.parse(template.headerFields),
+      bodyFields: JSON.parse(template.bodyFields),
+      footerFields: JSON.parse(template.footerFields),
+    }
+  } catch (error) {
+    console.error('Error getting template by ID:', error)
+    throw error
+  }
+})
+
+ipcMain.handle('printing-template:create', async (_, template: any) => {
+  try {
+    const created = await prisma.printTemplate.create({
+      data: {
+        ...template,
+        headerFields: JSON.stringify(template.headerFields || []),
+        bodyFields: JSON.stringify(template.bodyFields || []),
+        footerFields: JSON.stringify(template.footerFields || []),
+      },
+    })
+    return {
+      ...created,
+      headerFields: JSON.parse(created.headerFields),
+      bodyFields: JSON.parse(created.bodyFields),
+      footerFields: JSON.parse(created.footerFields),
+    }
+  } catch (error) {
+    console.error('Error creating template:', error)
+    throw error
+  }
+})
+
+ipcMain.handle('printing-template:update', async (_, { id, template }: { id: string, template: any }) => {
+  try {
+    const updated = await prisma.printTemplate.update({
+      where: { id },
+      data: {
+        ...template,
+        headerFields: JSON.stringify(template.headerFields || []),
+        bodyFields: JSON.stringify(template.bodyFields || []),
+        footerFields: JSON.stringify(template.footerFields || []),
+      },
+    })
+    return {
+      ...updated,
+      headerFields: JSON.parse(updated.headerFields),
+      bodyFields: JSON.parse(updated.bodyFields),
+      footerFields: JSON.parse(updated.footerFields),
+    }
+  } catch (error) {
+    console.error('Error updating template:', error)
+    throw error
+  }
+})
+
+ipcMain.handle('printing-template:delete', async (_, id: string) => {
+  try {
+    await prisma.printTemplate.delete({ where: { id } })
+    return true
+  } catch (error) {
+    console.error('Error deleting template:', error)
+    throw error
+  }
+})
+
+ipcMain.handle('printing-template:deleteAll', async () => {
+  try {
+    await prisma.printTemplate.deleteMany({})
+    return true
+  } catch (error) {
+    console.error('Error deleting all templates:', error)
+    throw error
+  }
+})
+
 // App event handlers
 app.whenReady().then(async () => {
   await initDatabase()

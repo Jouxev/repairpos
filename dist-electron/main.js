@@ -1,4 +1,26 @@
 "use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 const electron = require("electron");
 const path = require("path");
 const url = require("url");
@@ -15,22 +37,22 @@ function commonjsRequire(path2) {
   throw new Error('Could not dynamically require "' + path2 + '". Please configure the dynamicRequireTargets or/and ignoreDynamicRequires option of @rollup/plugin-commonjs appropriately for this require call to work.');
 }
 var bcrypt$1 = { exports: {} };
-(function(module) {
+(function(module2) {
   /**
    * @license bcrypt.js (c) 2013 Daniel Wirtz <dcode@dcode.io>
    * Released under the Apache License, Version 2.0
    * see: https://github.com/dcodeIO/bcrypt.js for details
    */
   (function(global2, factory) {
-    if (typeof commonjsRequire === "function" && true && module && module["exports"])
-      module["exports"] = factory();
+    if (typeof commonjsRequire === "function" && true && module2 && module2["exports"])
+      module2["exports"] = factory();
     else
       (global2["dcodeIO"] = global2["dcodeIO"] || {})["bcrypt"] = factory();
   })(commonjsGlobal, function() {
     var bcrypt2 = {};
     var randomFallback = null;
     function random(len) {
-      if (module && module["exports"])
+      if (module2 && module2["exports"])
         try {
           return require("crypto")["randomBytes"](len);
         } catch (e) {
@@ -1977,6 +1999,115 @@ electron.ipcMain.handle("app:getVersion", () => {
 });
 electron.ipcMain.handle("app:openExternal", async (_, url2) => {
   await electron.shell.openExternal(url2);
+});
+electron.ipcMain.handle("image:save", async (_, { base64Data, filename, folder }) => {
+  try {
+    const fs = await import("fs");
+    const path2 = await import("path");
+    const mediaFolder = path2.join(process.resourcesPath || electron.app.getAppPath(), "public", "media", folder);
+    if (!fs.existsSync(mediaFolder)) {
+      fs.mkdirSync(mediaFolder, { recursive: true });
+    }
+    const filePath = path2.join(mediaFolder, filename);
+    const buffer = Buffer.from(base64Data, "base64");
+    fs.writeFileSync(filePath, buffer);
+    return `/media/${folder}/${filename}`;
+  } catch (error) {
+    console.error("Error saving image:", error);
+    throw error;
+  }
+});
+electron.ipcMain.handle("printing-template:getAll", async () => {
+  try {
+    const templates = await prisma.printTemplate.findMany({
+      orderBy: { createdAt: "desc" }
+    });
+    return templates.map((t) => ({
+      ...t,
+      headerFields: JSON.parse(t.headerFields),
+      bodyFields: JSON.parse(t.bodyFields),
+      footerFields: JSON.parse(t.footerFields)
+    }));
+  } catch (error) {
+    console.error("Error getting all templates:", error);
+    throw error;
+  }
+});
+electron.ipcMain.handle("printing-template:getById", async (_, id) => {
+  try {
+    const template = await prisma.printTemplate.findUnique({ where: { id } });
+    if (!template) return null;
+    return {
+      ...template,
+      headerFields: JSON.parse(template.headerFields),
+      bodyFields: JSON.parse(template.bodyFields),
+      footerFields: JSON.parse(template.footerFields)
+    };
+  } catch (error) {
+    console.error("Error getting template by ID:", error);
+    throw error;
+  }
+});
+electron.ipcMain.handle("printing-template:create", async (_, template) => {
+  try {
+    const created = await prisma.printTemplate.create({
+      data: {
+        ...template,
+        headerFields: JSON.stringify(template.headerFields || []),
+        bodyFields: JSON.stringify(template.bodyFields || []),
+        footerFields: JSON.stringify(template.footerFields || [])
+      }
+    });
+    return {
+      ...created,
+      headerFields: JSON.parse(created.headerFields),
+      bodyFields: JSON.parse(created.bodyFields),
+      footerFields: JSON.parse(created.footerFields)
+    };
+  } catch (error) {
+    console.error("Error creating template:", error);
+    throw error;
+  }
+});
+electron.ipcMain.handle("printing-template:update", async (_, { id, template }) => {
+  try {
+    const updated = await prisma.printTemplate.update({
+      where: { id },
+      data: {
+        ...template,
+        headerFields: JSON.stringify(template.headerFields || []),
+        bodyFields: JSON.stringify(template.bodyFields || []),
+        footerFields: JSON.stringify(template.footerFields || [])
+      }
+    });
+    return {
+      ...updated,
+      headerFields: JSON.parse(updated.headerFields),
+      bodyFields: JSON.parse(updated.bodyFields),
+      footerFields: JSON.parse(updated.footerFields)
+    };
+  } catch (error) {
+    console.error("Error updating template:", error);
+    throw error;
+  }
+});
+electron.ipcMain.handle("printing-template:delete", async (_, id) => {
+  try {
+    await prisma.printTemplate.delete({ where: { id } });
+    return true;
+  } catch (error) {
+    console.error("Error deleting template:", error);
+    throw error;
+  }
+});
+electron.ipcMain.handle("printing-template:deleteAll", async () => {
+  try {
+    await prisma.printTemplate.deleteMany({});
+    return true;
+  } catch (error) {
+    console.error("Error deleting all templates:", error);
+    throw error;
+  }
 });
 electron.app.whenReady().then(async () => {
   await initDatabase();

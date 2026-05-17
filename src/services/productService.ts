@@ -236,7 +236,7 @@ class ProductService {
         dimensions: data.dimensions,
         image: data.image,
       }
-
+     
       // Remove undefined values
       Object.keys(updateData).forEach(key => {
         if (updateData[key] === undefined) {
@@ -261,7 +261,7 @@ class ProductService {
           updateData.supplier = { connect: { id: data.supplierId } }
         }
       }
-
+    
       const result = await electronAPI.db.query({
         model: 'product',
         operation: 'update',
@@ -298,21 +298,26 @@ class ProductService {
   }
 
   // Update product quantity (for inventory adjustments)
-  async updateQuantity(id: string, quantity: number): Promise<Product> {
+  async updateQuantity(id: string, newQuantity: number): Promise<Product> {
     try {
+      // Ensure quantity is a valid integer
+      const quantity = Math.max(0, Math.round(newQuantity))
+      
       const result = await electronAPI.db.query({
         model: 'product',
         operation: 'update',
         args: {
           where: { id },
-          data: { quantity },
+          data: { 
+            quantity: quantity
+          },
           include: {
             category: true,
             supplier: true,
           },
         },
       })
-      return result
+      return result?.data
     } catch (error) {
       console.error('Error updating product quantity:', error)
       throw new Error('Failed to update product quantity')
@@ -325,7 +330,11 @@ class ProductService {
     if (!product) {
       throw new Error('Product not found')
     }
-    const newQuantity = product.quantity + adjustment
+    
+    // Access quantity from the product object directly
+    const currentQuantity = product.quantity || 0
+    const newQuantity = Math.max(0, currentQuantity + adjustment)
+    
     return this.updateQuantity(id, newQuantity)
   }
 

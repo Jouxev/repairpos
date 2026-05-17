@@ -20,6 +20,7 @@ export interface CreatePurchaseData {
   notes?: string
   orderedAt?: Date
   expectedDeliveryDate?: Date
+  updateStock?: boolean
 }
 
 export interface UpdatePurchaseData {
@@ -151,6 +152,20 @@ class PurchaseService {
               }
             }
           })
+
+          // Update product stock quantity if updateStock is true
+          if (data.updateStock) {
+            await electronAPI.db.query({
+              model: 'product',
+              operation: 'update',
+              args: {
+                where: { id: item.productId },
+                data: {
+                  quantity: { increment: item.quantity }
+                }
+              }
+            })
+          }
         }
       }
 

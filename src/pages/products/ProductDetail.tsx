@@ -1,23 +1,34 @@
 import { useParams, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Edit, Package } from 'lucide-react'
+import { ArrowLeft, Edit, Package, Printer, Tag } from 'lucide-react'
+import PrintLabelDialog from '@/components/products/PrintLabelDialog'
 
 export default function ProductDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [showPrintDialog, setShowPrintDialog] = useState(false)
 
-  // Mock data
+  // Mock data - in real app, fetch from API
   const product = {
     id: id || '1',
     name: 'iPhone Screen',
     sku: 'SCR-001',
     description: 'High-quality replacement screen for iPhone models',
-    price: 49.99,
+    salePrice: 49.99,
     cost: 25.00,
     stock: 15,
+    barcode: '123456789012',
     category: 'Screens',
     supplier: 'TechParts Inc.',
+  }
+
+  // Mock store info - in real app, get from settings
+  const storeInfo = {
+    name: 'RepairPro Store',
+    address: '123 Main St, City, Country',
+    phone: '+1 234 567 890',
   }
 
   return (
@@ -30,10 +41,16 @@ export default function ProductDetail() {
           <h1 className="text-3xl font-bold tracking-tight">{product.name}</h1>
           <p className="text-muted-foreground">{product.sku}</p>
         </div>
-        <Button className="ml-auto" onClick={() => navigate(`/products/${product.id}/edit`)}>
-          <Edit className="mr-2 h-4 w-4" />
-          Edit
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowPrintDialog(true)}>
+            <Printer className="mr-2 h-4 w-4" />
+            Print Label
+          </Button>
+          <Button onClick={() => navigate(`/products/${product.id}/edit`)}>
+            <Edit className="mr-2 h-4 w-4" />
+            Edit
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -54,7 +71,7 @@ export default function ProductDetail() {
             <span className="h-4 w-4 text-muted-foreground">$</span>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${product.price.toFixed(2)}</div>
+            <div className="text-2xl font-bold">${product.salePrice ? product.salePrice.toFixed(2) : '0.00'}</div>
             <p className="text-xs text-muted-foreground">per unit</p>
           </CardContent>
         </Card>
@@ -92,6 +109,13 @@ export default function ProductDetail() {
           </div>
         </CardContent>
       </Card>
+
+      <PrintLabelDialog
+        open={showPrintDialog}
+        onOpenChange={setShowPrintDialog}
+        product={product}
+        storeInfo={storeInfo}
+      />
     </div>
   )
 }

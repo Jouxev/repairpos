@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,14 +17,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
   Tooltip,
   TooltipContent,
@@ -48,21 +40,13 @@ import {
   QrCode,
   User,
   Package,
-  History,
   Tag,
-  Calculator,
-  MoreHorizontal,
   Check,
   X,
-  Save,
   FileText,
   AlertTriangle,
-  ArrowLeft,
-  Clock,
   Barcode,
-  Scan,
   Keyboard,
-  Trash,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/authStore'
@@ -123,14 +107,12 @@ interface Product {
 export default function POS() {
   const { user } = useAuthStore()
   
-  // Multi-cart state
   const [carts, setCarts] = useState<Cart[]>([
     { id: '1', name: 'Cart 1', items: [], customer: null, createdAt: new Date() }
   ])
   const [activeCartId, setActiveCartId] = useState<string>('1')
   const [isMultiCartEnabled, setIsMultiCartEnabled] = useState(false)
   
-  // Search/Scan mode
   const [searchMode, setSearchMode] = useState<'search' | 'barcode'>('search')
   const [searchQuery, setSearchQuery] = useState('')
   const [barcodeInput, setBarcodeInput] = useState('')
@@ -138,13 +120,11 @@ export default function POS() {
   const [products, setProducts] = useState<Product[]>([])
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([])
   
-  // Refs for keyboard handling
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const qtyInputRef = useRef<HTMLInputElement>(null)
   const barcodeScanTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
-  // Other states
   const [activeTab, setActiveTab] = useState('products')
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
   const [isReturnMode, setIsReturnMode] = useState(false)
@@ -154,7 +134,6 @@ export default function POS() {
   const [amountReceived, setAmountReceived] = useState<string>('')
   const [selectedCustomer, setSelectedCustomer] = useState<Client | null>(null)
   
-  // Discount states
   const [cartDiscount, setCartDiscount] = useState<Discount | null>(null)
   const [itemDiscounts, setItemDiscounts] = useState<Record<string, Discount>>({})
   const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false)
@@ -177,7 +156,6 @@ export default function POS() {
 
   const quickAmounts = [10, 20, 50, 100, 200, 500]
 
-  // Load products from database
   useEffect(() => {
     loadProducts()
   }, [])
@@ -185,7 +163,6 @@ export default function POS() {
   const loadProducts = async () => {
     try {
       const result = await productService.getProducts()
-      // Handle both array response and object with data property
       const data = Array.isArray(result) ? result : result?.data || []
       setProducts(data.map((p: any) => ({
         id: p.id,
@@ -201,7 +178,6 @@ export default function POS() {
     }
   }
 
-  // Filter products based on search
   useEffect(() => {
     if (searchQuery.trim()) {
       const filtered = products.filter(p =>
@@ -214,17 +190,14 @@ export default function POS() {
     }
   }, [searchQuery, products])
 
-  // Keyboard event handling
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // F2 - Toggle between search and barcode
       if (e.key === 'F2') {
         e.preventDefault()
         setSearchMode(prev => prev === 'search' ? 'barcode' : 'search')
         toast.info(`Switched to ${searchMode === 'search' ? 'barcode' : 'search'} mode`)
       }
 
-      // Number keys 0-9 for quantity when in barcode mode
       if (searchMode === 'barcode' && /^[0-9]$/.test(e.key) && document.activeElement !== barcodeInputRef.current) {
         e.preventDefault()
         setBarcodeQty(prev => {
@@ -233,7 +206,6 @@ export default function POS() {
         })
       }
 
-      // + and - keys for quantity
       if (searchMode === 'barcode' && (e.key === '+' || e.key === '-')) {
         e.preventDefault()
         setBarcodeQty(prev => {
@@ -242,7 +214,6 @@ export default function POS() {
         })
       }
 
-      // Enter key handling
       if (e.key === 'Enter') {
         if (searchMode === 'barcode' && barcodeInputRef.current === document.activeElement) {
           e.preventDefault()
@@ -255,7 +226,6 @@ export default function POS() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [searchMode, barcodeInput, barcodeQty])
 
-  // Focus management
   useEffect(() => {
     if (searchMode === 'barcode' && barcodeInputRef.current) {
       barcodeInputRef.current.focus()
@@ -264,17 +234,14 @@ export default function POS() {
     }
   }, [searchMode])
 
-  // Get active cart
   const activeCart = carts.find(c => c.id === activeCartId) || carts[0]
 
-  // Cart operations
   const addToCart = (product: Product, quantity: number = 1) => {
     if (isReturnMode) {
       toast.error('Cannot add items in return mode')
       return
     }
 
-    // Check stock
     if (product.quantity < quantity) {
       toast.error(`Insufficient stock. Only ${product.quantity} available.`)
       return
@@ -371,7 +338,6 @@ export default function POS() {
     }))
   }
 
-  // Barcode scanning
   const handleBarcodeScan = async (scanValue?: string) => {
     const barcode = scanValue || barcodeInput
     
@@ -381,7 +347,6 @@ export default function POS() {
     }
 
     try {
-      // Search for product by barcode
       const product = products.find(p => 
         p.barcode === barcode.trim() || 
         p.sku === barcode.trim() ||
@@ -389,13 +354,9 @@ export default function POS() {
       )
 
       if (!product) {
-        console.log('Product not found for barcode:', barcode)
         toast.error(`Item not found for barcode: ${barcode}`, {
-          icon: <AlertTriangle className="h-4 w-4" />,
-          duration: 5000,
-          important: true
+          icon: <AlertTriangle className="h-4 w-4" />
         })
-        // Reset input after not found
         setBarcodeInput('')
         setBarcodeQty(1)
         if (barcodeInputRef.current) {
@@ -404,9 +365,7 @@ export default function POS() {
         return
       }
 
-      // Check stock availability before adding
       if (product.quantity < barcodeQty) {
-        console.log('Insufficient stock:', { product: product.name, available: product.quantity, requested: barcodeQty })
         toast.error(
           <div className="flex flex-col gap-1">
             <span className="font-semibold">Insufficient Stock</span>
@@ -418,20 +377,16 @@ export default function POS() {
           {
             icon: <AlertTriangle className="h-5 w-5 text-destructive" />,
             duration: 5000,
-            important: true
           }
         )
         return
       }
 
-      // Add to cart with specified quantity
       addToCart(product, barcodeQty)
       
-      // Reset inputs
       setBarcodeInput('')
       setBarcodeQty(1)
       
-      // Refocus barcode input
       if (barcodeInputRef.current) {
         barcodeInputRef.current.focus()
       }
@@ -441,7 +396,6 @@ export default function POS() {
     }
   }
 
-  // Multi-cart operations
   const createNewCart = () => {
     const newCartId = Date.now().toString()
     const cartNumber = carts.length + 1
@@ -476,13 +430,6 @@ export default function POS() {
     toast.info('Cart closed')
   }
 
-  const renameCart = (cartId: string, newName: string) => {
-    setCarts(prev => prev.map(c => 
-      c.id === cartId ? { ...c, name: newName } : c
-    ))
-  }
-
-  // Existing functions
   const clearCart = () => {
     setCarts(prev => prev.map(cart => 
       cart.id === activeCartId 
@@ -670,7 +617,6 @@ export default function POS() {
 
       toast.success('Sale completed successfully!')
 
-      // Update stock for sold items
       for (const item of cart.items) {
         try {
           await productService.updateStock(item.id, -item.quantity)
@@ -679,7 +625,6 @@ export default function POS() {
         }
       }
 
-      // Clear cart after successful sale
       setCarts(prev => prev.map(c => 
         c.id === activeCartId 
           ? { ...c, items: [], customer: null }
@@ -690,7 +635,6 @@ export default function POS() {
       setItemDiscounts({})
       setSelectedCustomer(null)
       
-      // Refresh products to get updated stock
       loadProducts()
     } catch (error) {
       console.error('Checkout error:', error)
@@ -703,7 +647,6 @@ export default function POS() {
 
   return (
     <div className="h-[calc(100vh-8rem)]">
-      {/* Cart Tabs */}
       {isMultiCartEnabled && carts.length > 1 && (
         <div className="mb-2 flex items-center gap-2">
           <div className="flex gap-1">
@@ -742,7 +685,6 @@ export default function POS() {
       )}
 
       <div className="flex h-full gap-4">
-        {/* Products Section */}
         <div className="flex-1 flex flex-col">
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -778,7 +720,6 @@ export default function POS() {
             </div>
           </div>
 
-          {/* Search/Barcode Toggle */}
           <div className="mb-4 flex items-center gap-2">
             <Button
               variant={searchMode === 'search' ? 'default' : 'outline'}
@@ -804,7 +745,6 @@ export default function POS() {
             </div>
           </div>
 
-          {/* Search/Barcode Input Area */}
           {searchMode === 'search' ? (
             <div className="relative mb-4">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -828,13 +768,10 @@ export default function POS() {
                     const value = e.target.value
                     setBarcodeInput(value)
                     
-                    // Clear any existing timeout
                     if (barcodeScanTimeoutRef.current) {
                       clearTimeout(barcodeScanTimeoutRef.current)
                     }
                     
-                    // Auto-scan after user stops typing for 500ms
-                    // This allows barcode scanners to send all characters before scanning
                     if (value.length >= 3) {
                       barcodeScanTimeoutRef.current = setTimeout(() => {
                         handleBarcodeScan(value)
@@ -843,6 +780,9 @@ export default function POS() {
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
+                      if (barcodeScanTimeoutRef.current) {
+                        clearTimeout(barcodeScanTimeoutRef.current)
+                      }
                       handleBarcodeScan(barcodeInput)
                     }
                   }}
@@ -868,7 +808,6 @@ export default function POS() {
             </div>
           )}
 
-          {/* Products Grid */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="products" className="gap-2">
@@ -940,7 +879,6 @@ export default function POS() {
           </Tabs>
         </div>
 
-        {/* Cart Section */}
         <Card className="w-[450px] flex flex-col">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
@@ -964,7 +902,6 @@ export default function POS() {
           </CardHeader>
 
           <CardContent className="flex-1 flex flex-col p-0">
-            {/* Customer Info */}
             <div className="px-4 py-3 border-b space-y-3">
               {selectedCustomer ? (
                 <div className="space-y-2">
@@ -997,7 +934,6 @@ export default function POS() {
               )}
             </div>
 
-            {/* Cart Items */}
             <ScrollArea className="flex-1 px-4 py-2">
               {activeCart.items.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-muted-foreground py-8">
@@ -1078,10 +1014,8 @@ export default function POS() {
               )}
             </ScrollArea>
 
-            {/* Totals Section */}
             {activeCart.items.length > 0 && (
               <div className="border-t p-4 space-y-3">
-                {/* Discount Button */}
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Discounts</span>
                   <Button
@@ -1095,7 +1029,6 @@ export default function POS() {
                   </Button>
                 </div>
 
-                {/* Applied Discounts */}
                 {cartDiscount && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground flex items-center gap-1">
@@ -1124,13 +1057,11 @@ export default function POS() {
 
                 <Separator />
 
-                {/* Subtotal */}
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
                   <span>${totals.subtotal.toFixed(2)}</span>
                 </div>
 
-                {/* Discount Amount */}
                 {totals.cartDiscountAmount > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Discount</span>
@@ -1138,23 +1069,18 @@ export default function POS() {
                   </div>
                 )}
 
-                {/* Taxes */}
                 {totals.taxes.map((tax) => (
                   <div key={tax.name} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      {tax.name} ({tax.rate}%)
-                    </span>
+                    <span className="text-muted-foreground">{tax.name} ({tax.rate}%)</span>
                     <span>${(totals.taxableAmount * tax.rate / 100).toFixed(2)}</span>
                   </div>
                 ))}
 
-                {/* Total */}
                 <div className="flex justify-between text-xl font-bold pt-2 border-t">
                   <span>Total</span>
                   <span className="text-primary">${totals.total.toFixed(2)}</span>
                 </div>
 
-                {/* Checkout Button */}
                 <Button
                   className="w-full h-14 text-lg"
                   size="lg"
@@ -1169,7 +1095,6 @@ export default function POS() {
         </Card>
       </div>
 
-      {/* Discount Dialog */}
       <Dialog open={isDiscountDialogOpen} onOpenChange={setIsDiscountDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -1241,7 +1166,6 @@ export default function POS() {
         </DialogContent>
       </Dialog>
 
-      {/* Checkout Dialog */}
       <Dialog open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -1257,7 +1181,6 @@ export default function POS() {
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-6">
-            {/* Order Summary */}
             <div className="space-y-4">
               <h3 className="font-semibold flex items-center gap-2">
                 <FileText className="h-4 w-4" />
@@ -1304,7 +1227,6 @@ export default function POS() {
               </div>
             </div>
 
-            {/* Payment Section */}
             <div className="space-y-4">
               <h3 className="font-semibold flex items-center gap-2">
                 <CreditCard className="h-4 w-4" />

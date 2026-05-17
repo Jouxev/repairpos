@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import {
   Card,
   CardContent,
@@ -26,7 +26,14 @@ interface ClientFormData {
 
 export default function NewClient() {
   const navigate = useNavigate()
+  const { id } = useParams()
+  const location = useLocation()
+  const pathname = location.pathname
+  const isEdit = pathname.includes('/edit') || (!!id && !pathname.includes('/new'))
+  const clientId = id
+
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingClient, setIsLoadingClient] = useState(false)
   const [formData, setFormData] = useState<ClientFormData>({
     fullName: '',
     email: '',
@@ -36,13 +43,44 @@ export default function NewClient() {
     notes: '',
   })
 
+  // Load client data if in edit mode
+  useEffect(() => {
+    if (isEdit && clientId) {
+      loadClient(clientId)
+    }
+  }, [isEdit, clientId])
+
+  const loadClient = async (id: string) => {
+    try {
+      setIsLoadingClient(true)
+      const client = await clientService.getClientById(id)
+      if (client) {
+        setFormData({
+          fullName: client.fullName || '',
+          email: client.email || '',
+          phone: client.phone || '',
+          address: client.address || '',
+          city: client.city || '',
+          notes: client.notes || '',
+        })
+      } else {
+        toast.error('Client not found')
+        navigate('/clients')
+      }
+    } catch (error) {
+      console.error('Error loading client:', error)
+      toast.error('Failed to load client')
+    } finally {
+      setIsLoadingClient(false)
+    }
+  }
+
   const handleChange = (field: keyof ClientFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log('Form submitted')
 
     if (!formData.fullName.trim()) {
       toast.error('Client name is required')
@@ -51,31 +89,47 @@ export default function NewClient() {
 
     try {
       setIsLoading(true)
-      console.log('Calling clientService.createClient with:', {
-        fullName: formData.fullName,
-        phone: formData.phone,
-        email: formData.email || undefined,
-        address: formData.address,
-        city: formData.city,
-        notes: formData.notes,
-      })
-      const result = await clientService.createClient({
-        fullName: formData.fullName,
-        phone: formData.phone,
-        email: formData.email || undefined,
-        address: formData.address,
-        city: formData.city,
-        notes: formData.notes,
-      })
-      console.log('Client created successfully:', result)
-      toast.success('Client created successfully')
+
+      if (isEdit && clientId) {
+        // Update existing client
+        await clientService.updateClient(clientId, {
+          fullName: formData.fullName,
+          phone: formData.phone,
+          email: formData.email || undefined,
+          address: formData.address,
+          city: formData.city,
+          notes: formData.notes,
+        })
+        toast.success('Client updated successfully')
+      } else {
+        // Create new client
+        await clientService.createClient({
+          fullName: formData.fullName,
+          phone: formData.phone,
+          email: formData.email || undefined,
+          address: formData.address,
+          city: formData.city,
+          notes: formData.notes,
+        })
+        toast.success('Client created successfully')
+      }
       navigate('/clients')
     } catch (error: any) {
-      console.error('Error creating client:', error)
-      toast.error('Failed to create client: ' + error.message)
+      console.error('Error saving client:', error)
+      toast.error('Failed to save client: ' + error.message)
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (isLoadingClient) {
+    return (
+      <div className="p-6 max-w-4xl mx-auto">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-muted-foreground">Loading client...</div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -83,8 +137,12 @@ export default function NewClient() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">New Client</h1>
-          <p className="text-muted-foreground">Add a new client to your database</p>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {isEdit ? 'Edit Client' : 'New Client'}
+          </h1>
+          <p className="text-muted-foreground">
+            {isEdit ? 'Update client information' : 'Add a new client to your database'}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => navigate('/clients')}>
@@ -101,7 +159,7 @@ export default function NewClient() {
               <User className="h-5 w-5" />
               Client Information
             </CardTitle>
-            <CardDescription>Enter the client's contact details</CardDescription>
+            <CardDescription>Enter the client&apos;s contact details</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Name */}
@@ -185,7 +243,7 @@ export default function NewClient() {
               </Button>
               <Button type="submit" disabled={isLoading}>
                 <Save className="h-4 w-4 mr-2" />
-                {isLoading ? 'Creating...' : 'Create Client'}
+                {isLoading ? (isEdit ? 'Updating...' : 'Creating...') : (isEdit ? 'Update Client' : 'Create Client')}
               </Button>
             </div>
           </CardContent>

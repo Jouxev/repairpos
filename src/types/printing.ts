@@ -1,4 +1,20 @@
-export type TemplateType = 'THERMAL_RECEIPT' | 'A4_INVOICE' | 'A4_PROFORMA' | 'ORDER_REQUEST' | 'REPAIR_TICKET'
+export type TemplateType = 'THERMAL_RECEIPT' | 'A4_INVOICE' | 'A4_PROFORMA' | 'ORDER_REQUEST' | 'REPAIR_TICKET' | 'THERMAL_LABEL'
+
+export type LabelSize = '58mm' | '80mm' | '30x50mm' | '40x60mm' | '50x80mm' | 'CUSTOM'
+
+export interface LabelTemplate extends PrintTemplate {
+  type: 'THERMAL_LABEL'
+  labelSize: LabelSize
+  labelWidth: number
+  labelHeight: number
+  showProductName: boolean
+  showPrice: boolean
+  showBarcode: boolean
+  showStoreName: boolean
+  showSku: boolean
+  fontSize: 'small' | 'medium' | 'large'
+  barcodeType: 'CODE128' | 'EAN13' | 'UPC'
+}
 
 export type TemplateStatus = 'ACTIVE' | 'INACTIVE' | 'DRAFT'
 

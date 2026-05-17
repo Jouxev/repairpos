@@ -77,19 +77,133 @@ export interface CreateSaleInput {
   paidAmount?: number
   notes?: string
   saleDate?: Date
+  sellerId: string
+  cashRegisterId: string
 }
 
 export interface UpdateSaleInput extends Partial<CreateSaleInput> {
   id: string
 }
 
+declare global {
+  interface Window {
+    electronAPI: {
+      db: {
+        query: (params: { model: string; operation: string; args?: any }) => Promise<any>
+      }
+    }
+  }
+}
+
+const electronAPI = window.electronAPI
+
 class SalesService {
   // Create a new sale
   async createSale(data: CreateSaleInput): Promise<Sale> {
-    if (!window.electronAPI) {
-      throw new Error('Electron API not available')
+    try {
+      // Generate invoice number
+      const invoiceNumber = await this.generateInvoiceNumber()
+      
+      console.log('Creating sale with data:', { 
+        invoiceNumber, 
+        clientId: data.customerId || null,
+        sellerId: data.sellerId,
+        cashRegisterId: data.cashRegisterId
+      })
+      
+      // Create the sale without items first
+      const saleResult = await electronAPI.db.query({
+        model: 'sale',
+        operation: 'create',
+        args: {
+          data: {
+            invoiceNumber,
+            clientId: data.customerId || null,
+            status: data.status || 'CONFIRMED',
+            paymentStatus: 'PAID',
+            subtotal: data.total + (data.discountAmount || 0) - (data.taxAmount || 0),
+            discountAmount: data.discountAmount || 0,
+            taxAmount: data.taxAmount || 0,
+            total: data.total,
+            paidAmount: data.paidAmount || data.total,
+            dueAmount: 0,
+            notes: data.notes || null,
+            saleDate: data.saleDate || new Date(),
+            sellerId: data.sellerId,
+            cashRegisterId: data.cashRegisterId,
+          }
+        }
+      })
+
+      console.log('Sale creation result:', saleResult)
+
+      if (!saleResult?.data?.id) {
+        console.error('Create sale returned no data:', saleResult)
+        throw new Error(`Failed to create sale - ${saleResult?.error || 'no sale ID returned'}`)
+      }
+
+      const saleId = saleResult.data.id
+
+      // Create sale items separately
+      for (const item of data.items) {
+        try {
+          await electronAPI.db.query({
+            model: 'saleItem',
+            operation: 'create',
+            args: {
+              data: {
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                discount: item.discount || 0,
+                total: (item.unitPrice * item.quantity) - (item.discount || 0),
+                productId: item.productId,
+                saleId: saleId,
+              }
+            }
+          })
+        } catch (itemError) {
+          console.error(`Failed to create sale item for product ${item.productId}:`, itemError)
+          // Continue with other items
+        }
+      }
+
+      // Fetch the complete sale with items
+      const completeSaleResult = await electronAPI.db.query({
+        model: 'sale',
+        operation: 'findUnique',
+        args: {
+          where: { id: saleId },
+          include: {
+            items: {
+              include: {
+                product: true
+              }
+            }
+          }
+        }
+      })
+
+      if (!completeSaleResult?.data) {
+        console.error('Failed to fetch complete sale:', completeSaleResult)
+        // Return the basic sale data we have
+        return saleResult.data
+      }
+      
+      return completeSaleResult.data
+    } catch (error: any) {
+      console.error('Error creating sale:', error)
+      console.error('Error details:', error?.message, error?.stack)
+      throw new Error(`Failed to create sale: ${error?.message || 'Unknown error'}`)
     }
-    return await window.electronAPI.database.execute('sales/create', data)
+  }
+
+  // Generate unique invoice number
+  private async generateInvoiceNumber(): Promise<string> {
+    const prefix = 'INV'
+    const date = new Date()
+    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '')
+    const timestamp = Date.now().toString().slice(-6)
+    return `${prefix}-${dateStr}-${timestamp}`
   }
 
   // Get all sales
@@ -100,77 +214,108 @@ class SalesService {
     startDate?: Date
     endDate?: Date
   }): Promise<Sale[]> {
-    if (!window.electronAPI) {
-      throw new Error('Electron API not available')
+    try {
+      const where: any = {}
+      
+      if (filters?.status) where.status = filters.status
+      if (filters?.paymentStatus) where.paymentStatus = filters.paymentStatus
+      if (filters?.customerId) where.clientId = filters.customerId
+      if (filters?.startDate || filters?.endDate) {
+        where.createdAt = {}
+        if (filters.startDate) where.createdAt.gte = filters.startDate
+        if (filters.endDate) where.createdAt.lte = filters.endDate
+      }
+
+      const result = await electronAPI.db.query({
+        model: 'sale',
+        operation: 'findMany',
+        args: {
+          where,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            items: {
+              include: {
+                product: true
+              }
+            }
+          }
+        }
+      })
+
+      return result?.data || []
+    } catch (error) {
+      console.error('Error fetching sales:', error)
+      throw new Error('Failed to fetch sales')
     }
-    return await window.electronAPI.database.execute('sales/getAll', filters || {})
   }
 
   // Get a single sale by ID
   async getSaleById(id: string): Promise<Sale | null> {
-    if (!window.electronAPI) {
-      throw new Error('Electron API not available')
+    try {
+      const result = await electronAPI.db.query({
+        model: 'sale',
+        operation: 'findUnique',
+        args: {
+          where: { id },
+          include: {
+            items: {
+              include: {
+                product: true
+              }
+            }
+          }
+        }
+      })
+
+      return result?.data
+    } catch (error) {
+      console.error('Error fetching sale:', error)
+      throw new Error('Failed to fetch sale')
     }
-    return await window.electronAPI.database.execute('sales/getById', { id })
   }
 
   // Update a sale
   async updateSale(data: UpdateSaleInput): Promise<Sale> {
-    if (!window.electronAPI) {
-      throw new Error('Electron API not available')
-    }
-    return await window.electronAPI.database.execute('sales/update', data)
-  }
+    try {
+      const { id, ...updateData } = data
+      
+      const result = await electronAPI.db.query({
+        model: 'sale',
+        operation: 'update',
+        args: {
+          where: { id },
+          data: updateData,
+          include: {
+            items: {
+              include: {
+                product: true
+              }
+            }
+          }
+        }
+      })
 
-  // Update sale status
-  async updateStatus(id: string, status: SaleStatus): Promise<Sale> {
-    if (!window.electronAPI) {
-      throw new Error('Electron API not available')
+      return result?.data
+    } catch (error) {
+      console.error('Error updating sale:', error)
+      throw new Error('Failed to update sale')
     }
-    return await window.electronAPI.database.execute('sales/updateStatus', { id, status })
-  }
-
-  // Add payment to sale
-  async addPayment(
-    saleId: string,
-    data: {
-      amount: number
-      method: 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'CHECK' | 'DIGITAL_WALLET'
-      reference?: string
-      notes?: string
-      paymentDate?: Date
-    }
-  ): Promise<Sale> {
-    if (!window.electronAPI) {
-      throw new Error('Electron API not available')
-    }
-    return await window.electronAPI.database.execute('sales/addPayment', {
-      saleId,
-      ...data,
-    })
   }
 
   // Delete a sale
   async deleteSale(id: string): Promise<void> {
-    if (!window.electronAPI) {
-      throw new Error('Electron API not available')
+    try {
+      await electronAPI.db.query({
+        model: 'sale',
+        operation: 'delete',
+        args: {
+          where: { id }
+        }
+      })
+    } catch (error) {
+      console.error('Error deleting sale:', error)
+      throw new Error('Failed to delete sale')
     }
-    return await window.electronAPI.database.execute('sales/delete', { id })
-  }
-
-  // Get sales statistics
-  async getStatistics(period?: { startDate: Date; endDate: Date }): Promise<{
-    totalSales: number
-    totalRevenue: number
-    totalPaid: number
-    totalDue: number
-    byStatus: Record<SaleStatus, number>
-    byPaymentStatus: Record<PaymentStatus, number>
-  }> {
-    if (!window.electronAPI) {
-      throw new Error('Electron API not available')
-    }
-    return await window.electronAPI.database.execute('sales/getStatistics', period || {})
   }
 }
 

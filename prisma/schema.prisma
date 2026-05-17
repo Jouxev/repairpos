@@ -240,11 +240,14 @@ model Sale {
   total         Float
   paidAmount    Float         @default(0)
   dueAmount     Float         @default(0)
+  discountAmount     Float         @default(0)
   paymentMethod String        @default("CASH")
   paymentStatus String        @default("PAID")
   notes         String?
   isRefunded    Boolean       @default(false)
+  status         String?      @default("CONFIRMED")
   refundedAmount Float        @default(0)
+  saleDate      DateTime      @default(now())
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -365,4 +368,57 @@ model Notification {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notifications")
+}
+
+model PrintTemplate {
+  id            String   @id @default(uuid())
+  name          String
+  description   String?
+  type          String   // 'THERMAL_RECEIPT', 'A4_INVOICE', 'A4_PROFORMA', 'ORDER_REQUEST', 'REPAIR_TICKET', 'THERMAL_LABEL'
+  status          String   @default("ACTIVE") // 'ACTIVE', 'INACTIVE', 'DRAFT'
+  isDefault     Boolean  @default(false)
+  
+  // Paper settings
+  paperSize     String   @default("80mm")
+  orientation   String   @default("portrait")
+  marginTop     Int      @default(0)
+  marginRight   Int      @default(0)
+  marginBottom  Int      @default(0)
+  marginLeft    Int      @default(0)
+  
+  // Fields stored as JSON
+  headerFields  String   @default("[]")
+  bodyFields    String   @default("[]")
+  footerFields  String   @default("[]")
+  
+  // Custom CSS
+  customCss     String?
+  
+  // Logo
+  logoUrl       String?
+  
+  // Company info
+  companyName      String?
+  companyAddress   String?
+  companyPhone     String?
+  companyEmail     String?
+  companyWebsite   String?
+  taxNumber        String?
+  footerText       String?
+  
+  // Display settings
+  showLogo          Boolean  @default(true)
+  showHeader        Boolean  @default(true)
+  showFooter        Boolean  @default(true)
+  showDate          Boolean  @default(true)
+  showTime          Boolean  @default(false)
+  showPageNumber    Boolean  @default(false)
+  pageNumberFormat  String   @default("1/10")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  @@map("print_templates")
 }

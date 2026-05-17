@@ -1,7 +1,6 @@
 export interface ActivityLogEntry {
   id: string
   userId: string
-  username: string
   action: string
   module: string
   description?: string
@@ -67,9 +66,8 @@ class ActivityLogService {
     } = {}
   ): Promise<ActivityLogEntry | null> {
     try {
-      const entry: Omit<ActivityLogEntry, 'id' | 'createdAt'> = {
+      const entry = {
         userId: options.userId || 'system',
-        username: options.username || 'System',
         action,
         module,
         description: options.description,
@@ -87,11 +85,7 @@ class ActivityLogService {
         model: 'activityLog',
         operation: 'create',
         args: {
-          data: {
-            ...entry,
-            oldValue: entry.oldValue,
-            newValue: entry.newValue,
-          },
+          data: entry,
         },
       })
 
