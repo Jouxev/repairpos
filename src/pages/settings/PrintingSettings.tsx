@@ -313,8 +313,175 @@ export default function PrintingSettings() {
                 Configure your thermal and A4 printers
               </CardDescription>
             </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Thermal Printer Settings */}
+              <div className="space-y-4">
+                <h4 className="font-semibold flex items-center gap-2">
+                  <Receipt className="h-4 w-4" />
+                  Thermal Receipt Printer (80mm)
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Printer Name</Label>
+                    <Input placeholder="e.g., Kitchen Printer" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Port/Connection</Label>
+                    <Input placeholder="e.g., USB001, 192.168.1.100" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch id="thermal-enabled" />
+                    <Label htmlFor="thermal-enabled">Enabled</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch id="thermal-cutter" defaultChecked />
+                    <Label htmlFor="thermal-cutter">Auto Cutter</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch id="thermal-buzzer" />
+                    <Label htmlFor="thermal-buzzer">Buzzer</Label>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Label Printer Settings */}
+              <div className="space-y-4">
+                <h4 className="font-semibold flex items-center gap-2">
+                  <Tag className="h-4 w-4" />
+                  Label Printer (58mm/80mm)
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Printer Name</Label>
+                    <Input placeholder="e.g., Label Printer" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Port/Connection</Label>
+                    <Input placeholder="e.g., USB002, 192.168.1.101" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Label Size</Label>
+                    <select className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                      <option value="58x40">58mm × 40mm</option>
+                      <option value="80x50">80mm × 50mm</option>
+                      <option value="30x50">30mm × 50mm</option>
+                      <option value="40x60">40mm × 60mm</option>
+                      <option value="50x80">50mm × 80mm</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Print Density</Label>
+                    <select className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                      <option value="low">Low</option>
+                      <option value="medium" selected>Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Print Speed</Label>
+                    <select className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                      <option value="slow">Slow</option>
+                      <option value="normal" selected>Normal</option>
+                      <option value="fast">Fast</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch id="label-enabled" />
+                    <Label htmlFor="label-enabled">Enabled</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch id="label-cutter" defaultChecked />
+                    <Label htmlFor="label-cutter">Auto Cutter</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch id="label-peel" />
+                    <Label htmlFor="label-peel">Peel Mode</Label>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* A4/Laser Printer Settings */}
+              <div className="space-y-4">
+                <h4 className="font-semibold flex items-center gap-2">
+                  <FileSpreadsheet className="h-4 w-4" />
+                  A4/Laser Printer
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Printer Name</Label>
+                    <Input placeholder="e.g., Office Laser Printer" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Connection</Label>
+                    <Input placeholder="e.g., 192.168.1.200 or USB" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch id="a4-enabled" />
+                    <Label htmlFor="a4-enabled">Enabled</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch id="a4-duplex" defaultChecked />
+                    <Label htmlFor="a4-duplex">Duplex (Double-sided)</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch id="a4-color" />
+                    <Label htmlFor="a4-color">Color Printing</Label>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="defaults" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Default Templates</CardTitle>
+              <CardDescription>
+                Set default templates for each document type
+              </CardDescription>
+            </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">Printer configuration coming soon...</p>
+              <div className="space-y-4">
+                {[
+                  { type: 'THERMAL_RECEIPT', label: 'Thermal Receipt', icon: Receipt },
+                  { type: 'THERMAL_LABEL', label: 'Thermal Label', icon: Tag },
+                  { type: 'A4_INVOICE', label: 'A4 Invoice', icon: FileSpreadsheet },
+                  { type: 'REPAIR_TICKET', label: 'Repair Ticket', icon: Wrench },
+                ].map((item) => {
+                  const defaultTemplate = templates.find(t => t.type === item.type && t.isDefault)
+                  return (
+                    <div key={item.type} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center gap-4">
+                        <div className="p-2 bg-primary/10 rounded-lg">
+                          <item.icon className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium">{item.label}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {defaultTemplate ? `Default: ${defaultTemplate.name}` : 'No default set'}
+                          </p>
+                        </div>
+                      </div>
+                      <Button variant="outline" size="sm">
+                        Set Default
+                      </Button>
+                    </div>
+                  )
+                })}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
