@@ -1,0 +1,515 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  username    String   @unique
+  email       String   @unique
+  password    String
+  fullName    String
+  phone       String?
+  role        String   @default("SELLER")
+  isActive    Boolean  @default(true)
+  avatar      String?
+  commissionRate Float  @default(50)  // Percentage of profit technician earns (default 50%)
+  balance     Float    @default(0)    // Current balance for technician
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastLoginAt DateTime?
+
+  cashRegistersOpened  CashRegister[] @relation("OpenedBy")
+  cashRegistersClosed  CashRegister[] @relation("ClosedBy")
+  sales                Sale[]
+  repairsAssigned      Repair[]       @relation("AssignedTechnician")
+  activities           ActivityLog[]
+  notifications        Notification[]
+  earnings             TechnicianEarning[]
+
+  @@map("users")
+}
+
+model TechnicianEarning {
+  id          String   @id @default(uuid())
+  amount      Float    // Amount earned (can be positive or negative)
+  type        String   // 'COMMISSION', 'PENALTY', 'ADJUSTMENT'
+  description String?
+  repairId    String?
+  createdAt   DateTime @default(now())
+
+  technicianId String
+  technician   User     @relation(fields: [technicianId], references: [id])
+
+  @@map("technician_earnings")
+}
+
+model ShopSettings {
+  id            String   @id @default(uuid())
+  shopName      String   @default("RepairPro")
+  shopAddress   String?
+  shopPhone     String?
+  shopEmail     String?
+  shopLogo      String?
+  currency      String   @default("USD")
+  currencySymbol String  @default("$")
+  taxRate       Float    @default(0)
+  language      String   @default("en")
+  timezone      String   @default("UTC")
+  receiptFooter String?
+  thermalPrinterWidth Int @default(80)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("shop_settings")
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  color       String    @default("#3b82f6")
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products    Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  barcode         String?  @unique
+  sku             String?  @unique
+  costPrice       Float    @default(0)
+  salePrice       Float    @default(0)
+  salePrice2      Float    @default(0)
+  salePrice3      Float    @default(0)
+  quantity        Int      @default(0)
+  minStockAlert   Int      @default(5)
+  location        String?
+  image           String?
+  isActive        Boolean  @default(true)
+  isService       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  categoryId      String?
+  category        Category?    @relation(fields: [categoryId], references: [id])
+  supplierId      String?
+  supplier        Supplier?    @relation(fields: [supplierId], references: [id])
+  
+  saleItems       SaleItem[]
+  inventoryLogs   InventoryLog[]
+  purchaseItems   PurchaseItem[]
+
+  @@map("products")
+}
+
+model Client {
+  id          String   @id @default(uuid())
+  fullName    String
+  phone       String
+  email       String?
+  address     String?
+  notes       String?
+  balance     Float    @default(0)
+  isActive    Boolean @default(true)
+  loyaltyPoints Int    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sales       Sale[]
+  repairs     Repair[]
+
+  @@map("clients")
+}
+
+model Supplier {
+  id          String   @id @default(uuid())
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  balance     Float    @default(0)
+  notes       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products    Product[]
+  purchases   Purchase[]
+
+  @@map("suppliers")
+}
+
+model Repair {
+  id                  String   @id @default(uuid())
+  ticketNumber        String   @unique
+  deviceName          String
+  deviceBrand         String
+  deviceModel         String
+  deviceIMEI          String?
+  deviceSerial        String?
+  devicePassword      String?
+  problemDescription  String
+  repairCost          Float    @default(0)
+  prepayment          Float    @default(0)
+  dueAmount           Float    @default(0)
+  status              String   @default("PENDING")
+  priority            String   @default("NORMAL")
+  accessoriesReceived String?
+  technicianNotes     String?
+  expectedDeliveryDate DateTime?
+  receivedAt          DateTime @default(now())
+  diagnosedAt         DateTime?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  deliveredAt         DateTime?
+  cancelledAt         DateTime?
+  cancellationReason  String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  clientId            String
+  client              Client       @relation(fields: [clientId], references: [id])
+  
+  technicianId        String?
+  technician          User?          @relation("AssignedTechnician", fields: [technicianId], references: [id])
+  
+  parts               String?   // JSON array of parts
+
+  @@map("repairs")
+}
+
+model CashRegister {
+  id            String        @id @default(uuid())
+  openingAmount Float
+  closingAmount Float?
+  currentBalance Float
+  totalSales    Float         @default(0)
+  totalRefunds  Float         @default(0)
+  cashIn        Float         @default(0)
+  cashOut       Float         @default(0)
+  difference    Float?
+  notes         String?
+  status        String        @default("OPEN")
+  openedAt      DateTime      @default(now())
+  closedAt      DateTime?
+
+  openedById    String
+  openedBy      User          @relation("OpenedBy", fields: [openedById], references: [id])
+  
+  closedById    String?
+  closedBy      User?         @relation("ClosedBy", fields: [closedById], references: [id])
+  
+  cashMovements CashMovement[]
+  sales         Sale[]
+
+  @@map("cash_registers")
+}
+
+model CashMovement {
+  id          String          @id @default(uuid())
+  type        String
+  amount      Float
+  reason      String
+  createdAt   DateTime        @default(now())
+
+  cashRegisterId String
+  cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
+
+  @@map("cash_movements")
+}
+
+model Sale {
+  id            String        @id @default(uuid())
+  invoiceNumber String        @unique
+  subtotal      Float
+  discount      Float         @default(0)
+  discountType  String        @default("FIXED")
+  taxRate       Float         @default(0)
+  taxAmount     Float         @default(0)
+  total         Float
+  paidAmount    Float         @default(0)
+  dueAmount     Float         @default(0)
+  discountAmount     Float         @default(0)
+  paymentMethod String        @default("CASH")
+  paymentStatus String        @default("PAID")
+  notes         String?
+  isRefunded    Boolean       @default(false)
+  status         String?      @default("CONFIRMED")
+  refundedAmount Float        @default(0)
+  saleDate      DateTime      @default(now())
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  clientId      String?
+  client        Client?       @relation(fields: [clientId], references: [id])
+  
+  sellerId      String
+  seller        User          @relation(fields: [sellerId], references: [id])
+  
+  cashRegisterId String
+  cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
+
+  items         SaleItem[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id        String  @id @default(uuid())
+  quantity  Int
+  unitPrice Float
+  discount  Float   @default(0)
+  total     Float
+
+  saleId    String
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@map("sale_items")
+}
+
+model Purchase {
+  id            String        @id @default(uuid())
+  invoiceNumber String
+  subtotal      Float
+  taxAmount     Float         @default(0)
+  total         Float
+  paidAmount    Float         @default(0)
+  dueAmount     Float         @default(0)
+  paymentStatus String        @default("PENDING")
+  status        String        @default("ORDERED")
+  notes         String?
+  orderedAt     DateTime      @default(now())
+  receivedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  supplierId    String
+  supplier      Supplier      @relation(fields: [supplierId], references: [id])
+
+  items         PurchaseItem[]
+
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id        String   @id @default(uuid())
+  quantity  Int
+  unitCost  Float
+  total     Float
+
+  purchaseId String
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+
+  @@map("purchase_items")
+}
+
+model InventoryLog {
+  id          String   @id @default(uuid())
+  type        String
+  quantity    Int
+  previousQty Int
+  newQty      Int
+  reason      String?
+  reference   String?
+  createdAt   DateTime @default(now())
+
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+
+  @@map("inventory_logs")
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  action      String
+  module      String
+  description String?
+  entityId    String?
+  entityType  String?
+  oldValue    String?
+  newValue    String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@map("activity_logs")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  data      String?
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model Printer {
+  id              String   @id @default(uuid())
+  name            String
+  code            String   @unique
+  technology      String
+  connectionType  String   @default("SYSTEM")
+  deviceName      String?
+  paperSize       String   @default("80mm")
+  capabilitiesJson String  @default("[]")
+  isEnabled       Boolean  @default(true)
+  isDefault       Boolean  @default(false)
+  supportsColor   Boolean  @default(false)
+  supportsDuplex  Boolean  @default(false)
+  settingsJson    String   @default("{}")
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  assignments     TemplateAssignment[]
+  history         PrintHistory[]
+
+  @@map("printers")
+}
+
+model PrintTemplate {
+  id            String   @id @default(uuid())
+  name          String
+  description   String?
+  type          String   // 'THERMAL_RECEIPT', 'A4_INVOICE', 'A4_PROFORMA', 'ORDER_REQUEST', 'REPAIR_TICKET', 'THERMAL_LABEL'
+  status          String   @default("ACTIVE") // 'ACTIVE', 'INACTIVE', 'DRAFT'
+  isDefault     Boolean  @default(false)
+  
+  // Paper settings
+  paperSize     String   @default("80mm")
+  orientation   String   @default("portrait")
+  marginTop     Int      @default(0)
+  marginRight   Int      @default(0)
+  marginBottom  Int      @default(0)
+  marginLeft    Int      @default(0)
+  
+  // Fields stored as JSON
+  headerFields  String   @default("[]")
+  bodyFields    String   @default("[]")
+  footerFields  String   @default("[]")
+  
+  // Custom CSS
+  customCss     String?
+  
+  // Logo
+  logoUrl       String?
+  
+  // Company info
+  companyName      String?
+  companyAddress   String?
+  companyPhone     String?
+  companyEmail     String?
+  companyWebsite   String?
+  taxNumber        String?
+  footerText       String?
+  
+  // Display settings
+  showLogo          Boolean  @default(true)
+  showHeader        Boolean  @default(true)
+  showFooter        Boolean  @default(true)
+  showDate          Boolean  @default(true)
+  showTime          Boolean  @default(false)
+  showPageNumber    Boolean  @default(false)
+  pageNumberFormat  String   @default("1/10")
+
+  // New printing engine metadata
+  documentType    String   @default("POS_INVOICE")
+  printerType     String   @default("THERMAL")
+  channel         String   @default("RECEIPT")
+  source          String   @default("SYSTEM")
+  schemaVersion   Int      @default(1)
+  versionNumber   Int      @default(1)
+  definitionJson  String   @default("{}")
+  settingsJson    String   @default("{}")
+  sampleDataJson  String   @default("{}")
+  tagsJson        String   @default("[]")
+  isEnabled       Boolean  @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  versions    TemplateVersion[]
+  assignments TemplateAssignment[]
+  history     PrintHistory[]
+
+  @@map("print_templates")
+}
+
+model TemplateVersion {
+  id            String   @id @default(uuid())
+  templateId    String
+  versionNumber Int
+  snapshotJson  String
+  notes         String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+
+  template      PrintTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, versionNumber])
+  @@map("template_versions")
+}
+
+model TemplateAssignment {
+  id           String   @id @default(uuid())
+  documentType String
+  templateId   String
+  printerId    String?
+  channel      String   @default("RECEIPT")
+  isEnabled    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  template     PrintTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  printer      Printer?      @relation(fields: [printerId], references: [id], onDelete: SetNull)
+
+  @@map("template_assignments")
+}
+
+model PrintHistory {
+  id           String   @id @default(uuid())
+  documentType String
+  templateId   String?
+  printerId    String?
+  status       String
+  copies       Int      @default(1)
+  payloadJson  String   @default("{}")
+  renderedHtml String?
+  errorMessage String?
+  triggeredBy  String?
+  createdAt    DateTime @default(now())
+
+  template     PrintTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  printer      Printer?       @relation(fields: [printerId], references: [id], onDelete: SetNull)
+
+  @@map("print_history")
+}
