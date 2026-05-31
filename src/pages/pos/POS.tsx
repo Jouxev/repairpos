@@ -1217,9 +1217,9 @@ export default function POS() {
           toast.success(t('openRegister'))
         }}
       />
-      <div className="h-[calc(100vh-8rem)] animate-in">
+      <div className="h-[calc(100vh-8rem)]">
         {/* Quick Status Bar */}
-        <div className="mb-3 flex items-center justify-between rounded-2xl border border-border/50 bg-card/50 px-4 py-2 text-xs text-muted-foreground">
+        <div className="mb-3 flex items-center justify-between rounded-2xl border border-border/50 bg-gradient-to-r from-muted/30 via-muted/20 to-muted/30 px-4 py-2.5 text-xs text-muted-foreground backdrop-blur-sm">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1">
               <Package className="h-3.5 w-3.5" />
@@ -1646,12 +1646,19 @@ export default function POS() {
           </div>
         </div>
 
-        <Card className="w-[450px] flex flex-col">
+        <Card className="w-[450px] flex flex-col border-border/50 shadow-lg">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-lg">
-                <ShoppingCart className="h-5 w-5" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
+                  <ShoppingCart className="h-4 w-4 text-primary" />
+                </div>
                 {isReturnMode ? t('returnItems') : activeCart.name}
+                {activeCart.items.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 text-xs">
+                    {activeCart.items.length}
+                  </Badge>
+                )}
               </CardTitle>
               <div className="flex items-center gap-1">
                 {activeCart.items.length > 0 && (
@@ -1659,7 +1666,7 @@ export default function POS() {
                     variant="ghost"
                     size="icon"
                     onClick={clearCart}
-                    className="h-8 w-8 text-destructive"
+                    className="h-8 w-8 text-destructive hover:bg-destructive/10"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -1773,9 +1780,11 @@ export default function POS() {
             <ScrollArea className="flex-1 px-4 py-2">
               {activeCart.items.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-muted-foreground py-8">
-                  <ShoppingCart className="h-12 w-12 mb-3 opacity-50" />
-                  <p className="text-sm">{t('yourCartIsEmpty')}</p>
-                  <p className="text-xs">
+                  <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-3xl bg-muted/50">
+                    <ShoppingCart className="h-10 w-10 opacity-40" />
+                  </div>
+                  <p className="text-sm font-medium">{t('yourCartIsEmpty')}</p>
+                  <p className="mt-1 text-xs text-muted-foreground/70">
                     {searchMode === 'barcode' 
                       ? t('scanBarcodeHint')
                       : t('searchProductsHint')}
@@ -1786,7 +1795,7 @@ export default function POS() {
                   {activeCart.items.map((item) => (
                     <div
                       key={item.id}
-                      className="flex items-center gap-2 p-2 rounded-lg border bg-card"
+                      className="flex items-center gap-2 p-2.5 rounded-xl border bg-card/50 transition-all duration-200 hover:bg-accent/30"
                     >
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm truncate">{item.name}</p>
@@ -1918,7 +1927,7 @@ export default function POS() {
                 </div>
 
                 <Button
-                  className="w-full h-14 text-lg"
+                  className="w-full h-14 text-lg font-semibold shadow-md transition-all duration-200 hover:shadow-lg"
                   size="lg"
                   onClick={() => setIsCheckoutOpen(true)}
                 >

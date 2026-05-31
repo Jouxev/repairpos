@@ -6,10 +6,11 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import EntityExportButton from '@/components/common/EntityExportButton'
-import { Plus, Search, Package, Loader2, Tag, Printer, SlidersHorizontal, Grid3X3, List, AlertTriangle, ArrowUpDown } from 'lucide-react'
+import { Plus, Search, Package, Loader2, Tag, Printer, SlidersHorizontal, Grid3X3, List, AlertTriangle, ArrowUpDown, MapPin } from 'lucide-react'
 import { productService, Product } from '@/services/productService'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+import { getImageUrl } from '@/utils/imageUpload'
 import CategoryManagement from './CategoryManagement'
 import { useLocaleFormatters } from '@/hooks/useLocaleFormatters'
 import { useAppSettings } from '@/contexts/AppSettingsContext'
@@ -201,9 +202,19 @@ export default function ProductsList() {
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 
                 <div className="relative">
-                  <div className="mb-4 flex items-start justify-between">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
-                      <Package className="h-6 w-6 text-primary" />
+              <div className="mb-4 flex items-start justify-between">
+                    <div className="relative h-14 w-14 overflow-hidden rounded-2xl bg-muted">
+                      {getImageUrl(product.image) ? (
+                        <img
+                          src={getImageUrl(product.image) || ''}
+                          alt={product.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <Package className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <Badge variant={stockStatus.variant} className="text-[10px] gap-1">
@@ -218,7 +229,7 @@ export default function ProductsList() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
+                    <div className="space-y-2">
                     <h3 className="font-semibold leading-tight line-clamp-2">{product.name}</h3>
                     <p className="text-xs text-muted-foreground">
                       {product.sku || t('noSku')}
@@ -226,6 +237,12 @@ export default function ProductsList() {
                         <> · <span className="font-medium">{product.category.name}</span></>
                       )}
                     </p>
+                    {product.location && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <MapPin className="h-3 w-3" />
+                        <span className="truncate">{product.location}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-4">
@@ -259,8 +276,16 @@ export default function ProductsList() {
                 onClick={() => navigate(`/products/${product.id}`)}
               >
                 <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10">
-                    <Package className="h-6 w-6 text-primary" />
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-muted">
+                    {getImageUrl(product.image) ? (
+                      <img
+                        src={getImageUrl(product.image) || ''}
+                        alt={product.name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Package className="h-6 w-6 text-muted-foreground" />
+                    )}
                   </div>
                   <div className="min-w-0">
                     <p className="font-medium truncate">{product.name}</p>

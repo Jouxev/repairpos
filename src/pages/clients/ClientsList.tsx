@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import EntityExportButton from '@/components/common/EntityExportButton'
-import { Plus, Search, Users, Loader2, Phone, Mail, MapPin, CreditCard, ChevronRight, UserPlus, ArrowUpDown, Filter } from 'lucide-react'
+import { Plus, Search, Users, Loader2, Phone, Mail, MapPin, CreditCard, ChevronRight, UserPlus, ArrowUpDown, Filter, Grid3X3, List } from 'lucide-react'
 import { clientService, Client } from '@/services/clientService'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -24,6 +24,7 @@ export default function ClientsList() {
   const [clients, setClients] = useState<Client[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [sortBy, setSortBy] = useState<'name' | 'balance' | 'newest'>('newest')
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
   useEffect(() => {
     loadClients()
@@ -172,6 +173,26 @@ export default function ClientsList() {
               )}
             </div>
             <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 rounded-lg border bg-background p-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                  className="h-8 px-2"
+                  onClick={() => setViewMode('grid')}
+                >
+                  <Grid3X3 className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={viewMode === 'list' ? 'default' : 'ghost'}
+                  className="h-8 px-2"
+                  onClick={() => setViewMode('list')}
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </div>
               <div className="flex items-center gap-1.5 rounded-lg border bg-background px-2 py-1">
                 <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
                 <select
@@ -216,7 +237,7 @@ export default function ClientsList() {
             {t('createClient')}
           </Button>
         </div>
-      ) : (
+      ) : viewMode === 'grid' ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {filteredClients.map((client, index) => (
             <div
@@ -267,6 +288,50 @@ export default function ClientsList() {
                     <p className="text-[10px] text-muted-foreground">{getBalanceLabel(client.balance || 0)}</p>
                   </div>
                 </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filteredClients.map((client) => (
+            <div
+              key={client.id}
+              className="group flex items-center justify-between rounded-xl border border-border/50 bg-card p-4 transition-all duration-200 hover:bg-accent/50 cursor-pointer hover-lift"
+              onClick={() => navigate(`/clients/${client.id}`)}
+            >
+              <div className="flex items-center gap-4">
+                <Avatar className="h-10 w-10 rounded-xl">
+                  <AvatarFallback className="rounded-xl bg-primary/10 text-primary font-semibold text-sm">
+                    {getInitials(client.fullName)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{client.fullName}</p>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    {client.phone && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Phone className="h-3 w-3" />
+                        <span>{client.phone}</span>
+                      </div>
+                    )}
+                    {client.email && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Mail className="h-3 w-3" />
+                        <span className="truncate max-w-[150px]">{client.email}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <p className={cn("text-sm font-semibold", getBalanceColor(client.balance || 0))}>
+                    {formatCurrency(client.balance || 0)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">{getBalanceLabel(client.balance || 0)}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
               </div>
             </div>
           ))}
